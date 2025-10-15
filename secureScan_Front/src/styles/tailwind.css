@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base: normalize + dark scheme + page sizing */
+@layer base {
+  :root { color-scheme: dark; }
+
+  html {
+    text-size-adjust: 100%;
+    -webkit-text-size-adjust: 100%;
+    height: 100%;
+  }
+
+  body {
+    @apply bg-surface-0 text-neutral-100 antialiased;
+    height: 100%;
+  }
+}
+
+/* Utilities: backdrop blur with a safe fallback */
+@layer utilities {
+  .backdrop-blur-safe {
+    background-color: rgba(17, 17, 17, 0.6);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .backdrop-blur-safe {
+      background-color: rgba(17, 17, 17, 0.9);
+    }
+  }
+}
+
+/* Global: smooth scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #444 #111;
+}
+*::-webkit-scrollbar { height: 8px; width: 8px; }
+*::-webkit-scrollbar-thumb { background: #444; border-radius: 999px; }
+*::-webkit-scrollbar-track { background: #111; }
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root { color-scheme: dark; }
+  body { @apply bg-neutral-950 text-neutral-100 antialiased; }
+}
+

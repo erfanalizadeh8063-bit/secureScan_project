@@ -1,0 +1,31 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: securescan-backend
+    environment:
+      - BIND_ADDR=0.0.0.0:8080
+      - ALLOWED_ORIGINS=http://localhost:3000
+      - SCAN_MAX_CONCURRENCY=4
+      - HTTP_TIMEOUT_MS=10000
+    ports:
+      - "8080:8080"
+    networks:
+      - securescan
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: securescan-frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    networks:
+      - securescan
+
+networks:
+  securescan:
+    driver: bridge

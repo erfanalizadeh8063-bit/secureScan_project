@@ -1,0 +1,14 @@
+C:\Users\erfan\Desktop\secureScan\secureScan_Back\target\debug\deps\serde-bdcc19bfc3373707.d: C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs C:\Users\erfan\Desktop\secureScan\secureScan_Back\target\debug\build\serde-6073d0f37f08f39c\out/private.rs
+
+C:\Users\erfan\Desktop\secureScan\secureScan_Back\target\debug\deps\libserde-bdcc19bfc3373707.rlib: C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs C:\Users\erfan\Desktop\secureScan\secureScan_Back\target\debug\build\serde-6073d0f37f08f39c\out/private.rs
+
+C:\Users\erfan\Desktop\secureScan\secureScan_Back\target\debug\deps\libserde-bdcc19bfc3373707.rmeta: C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs C:\Users\erfan\Desktop\secureScan\secureScan_Back\target\debug\build\serde-6073d0f37f08f39c\out/private.rs
+
+C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs:
+C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs:
+C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs:
+C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs:
+C:\Users\erfan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs:
+C:\Users\erfan\Desktop\secureScan\secureScan_Back\target\debug\build\serde-6073d0f37f08f39c\out/private.rs:
+
+# env-dep:OUT_DIR=C:\\Users\\erfan\\Desktop\\secureScan\\secureScan_Back\\target\\debug\\build\\serde-6073d0f37f08f39c\\out
