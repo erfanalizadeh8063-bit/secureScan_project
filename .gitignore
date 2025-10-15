@@ -1,4 +1,6 @@
-﻿# General
+﻿# ====================================
+# 🔹 General temporary & archive files
+# ====================================
 *.log
 *.tmp
 *.bak
@@ -11,60 +13,86 @@
 .DS_Store
 Thumbs.db
 
-# Python (Backend)
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.so
-*.egg
-*.egg-info/
-.env
-venv/
-env/
-.venv/
-ENV/
-*.db
-instance/
-.mypy_cache/
-.pytest_cache/
-.cache/
-*.sqlite3
+# ====================================
+# 🔹 Rust (Backend)
+# ====================================
+target/
+**/target/
+*.rlib
+*.rmeta
+*.pdb
+*.dll
+*.exe
+Cargo.lock
+# If you have tests or coverage outputs
+coverage/
+*.profraw
+*.profdata
+secureScan_Back/target/
 
-# Node.js / Frontend
+# ====================================
+# 🔹 Node.js / Frontend
+# ====================================
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.pnpm-debug.log*
 dist/
 build/
 .cache/
+.next/
+out/
+.env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+secureScan_Front/node_modules/
 
-# Docker
+# ====================================
+# 🔹 Python (if any scripts or tools)
+# ====================================
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+env/
+ENV/
+instance/
+*.db
+.mypy_cache/
+.pytest_cache/
+.cache/
+
+# ====================================
+# 🔹 Docker
+# ====================================
 *.pid
 *.sock
+*.pid.lock
 
-# IDE / Editors
+# ====================================
+# 🔹 IDE / Editors
+# ====================================
 .vscode/
 .idea/
 *.sublime-project
 *.sublime-workspace
 *.code-workspace
 
-# OS / Misc
+# ====================================
+# 🔹 OS / Misc
+# ====================================
 Desktop.ini
 *.iml
 *.class
 *.out
 
-# Project-specific
+# ====================================
+# 🔹 Project-specific
+# ====================================
 secureScan_Back.zip
 secureScan_Front.zip
 secureScan_Back/venv/
 secureScan_Front/.next/
-target/
-Cargo.lock
