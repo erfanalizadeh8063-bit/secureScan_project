@@ -66,3 +66,5 @@ secureScan_Back.zip
 secureScan_Front.zip
 secureScan_Back/venv/
 secureScan_Front/.next/
+target/
+Cargo.lock
