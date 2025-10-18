@@ -1,5 +1,7 @@
 ﻿use actix_web::{get, App, HttpResponse, HttpServer};
 use std::env;
+use actix_cors::Cors;
+use actix_web::{App, HttpServer};
 
 #[get("/api/health")]
 async fn health() -> HttpResponse {
@@ -17,3 +19,17 @@ async fn main() -> std::io::Result<()> {
         .run()
         .await
 }
+
+
+
+HttpServer::new(|| {
+    let cors = Cors::default()
+        .allowed_origin(std::env::var("ALLOWED_ORIGINS").as_deref().unwrap_or("http://localhost:3000"))
+        .allow_any_method()
+        .allow_any_header();
+
+    App::new()
+        .wrap(cors)
+        .service(health)
+})
+

@@ -1,5 +1,5 @@
 [package]
-name = "securascan-backend"
+name = "securascan"
 version = "0.1.0"
 edition = "2021"
 
@@ -38,6 +38,9 @@ time = "0.3"
 [profile.release]
 opt-level = 3
 lto = true
+
+actix-cors = "0.7"
+
 
 
 
