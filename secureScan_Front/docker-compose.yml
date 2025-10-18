@@ -8,7 +8,10 @@ services:
     environment:
       POSTGRES_DB: securascan
       POSTGRES_USER: securascan
-      POSTGRES_PASSWORD: change-me
+      # DO NOT store real passwords here. For production, inject secrets via
+      # environment secrets or a secrets manager. Replace the placeholder below
+      # with a secure value in your local dev environment only.
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-__REPLACE_WITH_SECURE_PASSWORD__}"
     ports:
       - "5432:5432"
     volumes:
@@ -26,7 +29,9 @@ services:
     restart: unless-stopped
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@local
-      PGADMIN_DEFAULT_PASSWORD: admin
+      # PGAdmin password must be set via environment in development. In
+      # production use GitHub Actions secrets / Docker secrets or a Vault.
+      PGADMIN_DEFAULT_PASSWORD: "${PGADMIN_DEFAULT_PASSWORD:-__REPLACE_WITH_SECURE_PASSWORD__}"
     ports:
       - "5050:80"
     depends_on:
