@@ -3,7 +3,13 @@ WORKDIR /app
 COPY secureScan_Front/package*.json ./
 RUN npm ci
 COPY secureScan_Front/ .
-RUN npm run build
+# Ensure compatibility for esbuild native binary and rebuild specified version
+RUN apk add --no-cache libc6-compat \
+	&& apk add --no-cache --virtual .build-deps python3 make g++ \
+	&& npm rebuild esbuild@0.21.5 --build-from-source || true \
+	&& node -e "require('esbuild'); console.log('esbuild ok')" \
+	&& npm run build \
+	&& apk del .build-deps
 
 FROM nginx:1.27-alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
