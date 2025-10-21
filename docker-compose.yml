@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: securescan-backend
+    container_name: securascan-backend
     environment:
       - BIND_ADDR=0.0.0.0:8080
       - ALLOWED_ORIGINS=http://localhost:3000
@@ -11,21 +11,29 @@ services:
       - HTTP_TIMEOUT_MS=10000
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
     networks:
-      - securescan
+      - securascan
 
   frontend:
     build:
       context: .
       dockerfile: Dockerfile.frontend
-    container_name: securescan-frontend
+    container_name: securascan-frontend
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "3000:80"
     networks:
-      - securescan
+      - securascan
 
 networks:
-  securescan:
+  securascan:
     driver: bridge

@@ -43,7 +43,9 @@ build/
 .cache/
 .next/
 out/
+# environment files (do NOT commit real secrets)
 .env
+.env.*
 .env.local
 .env.development.local
 .env.test.local
@@ -96,3 +98,8 @@ secureScan_Back.zip
 secureScan_Front.zip
 secureScan_Back/venv/
 secureScan_Front/.next/
+/
+# explicit project-level ignores
+/target
+/node_modules
+/dist

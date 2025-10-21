@@ -1,0 +1,99 @@
+warning: unused manifest key: profile.release.actix-cors
+warning: unused import: `actix_web::http::Method`
+  --> src\main.rs:11:5
+   |
+11 | use actix_web::http::Method;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `ServiceRequest` and `Service`
+  --> src\main.rs:12:22
+   |
+12 | use actix_web::dev::{ServiceRequest, Service};
+   |                      ^^^^^^^^^^^^^^  ^^^^^^^
+
+warning: unused import: `futures_util::future::FutureExt`
+  --> src\main.rs:13:5
+   |
+13 | use futures_util::future::FutureExt;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `limiter_store`
+   --> src\main.rs:103:13
+    |
+103 |         let limiter_store = rate_store.clone();
+    |             ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_limiter_store`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `concurrency`
+   --> src\main.rs:140:13
+    |
+140 |         let concurrency: usize = 2;
+    |             ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_concurrency`
+
+warning: field `id` is never read
+  --> src\jobs\queue.rs:12:9
+   |
+11 | pub struct ScanJob {
+   |            ------- field in this struct
+12 |     pub id: Uuid,
+   |         ^^
+   |
+   = note: `ScanJob` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` on by default
+
+warning: function `start_workers` is never used
+  --> src\jobs\queue.rs:35:8
+   |
+35 | pub fn start_workers(service: ScanService, mut rx: mpsc::Receiver<ScanJob>, concurrency: usize) {
+   |        ^^^^^^^^^^^^^
+
+warning: methods `set_status` and `set_findings` are never used
+  --> src\domain\scan_service.rs:79:12
+   |
+44 | impl ScanService {
+   | ---------------- methods in this implementation
+...
+79 |     pub fn set_status(&self, id: Uuid, status: ScanStatus) {
+   |            ^^^^^^^^^^
+...
+89 |     pub fn set_findings(&self, id: Uuid, findings: Vec<Finding>) {
+   |            ^^^^^^^^^^^^
+
+warning: struct `ScanResult` is never constructed
+ --> src\scanner.rs:8:12
+  |
+8 | pub struct ScanResult {
+  |            ^^^^^^^^^^
+
+warning: function `scan_target` is never used
+  --> src\scanner.rs:16:14
+   |
+16 | pub async fn scan_target(target: &str) -> Result<ScanResult> {
+   |              ^^^^^^^^^^^
+
+warning: function `normalize_target` is never used
+  --> src\scanner.rs:64:4
+   |
+64 | fn normalize_target(t: &str) -> String {
+   |    ^^^^^^^^^^^^^^^^
+
+warning: function `analyze_html` is never used
+  --> src\scanner.rs:74:4
+   |
+74 | fn analyze_html(_url: &str, body: &str, headers: &HashMap<String, String>) -> Vec<String> {
+   |    ^^^^^^^^^^^^
+
+warning: `securascan` (bin "securascan" test) generated 12 warnings (run `cargo fix --bin "securascan" --tests` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.63s
+warning: the following packages contain code that will be rejected by a future version of Rust: sqlx-postgres v0.7.4
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 2`
+     Running unittests src\main.rs (target\debug\deps\securascan-0181222495e4f7df.exe)
+
+running 1 test
+test tests::integration_post_and_get_scan ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
