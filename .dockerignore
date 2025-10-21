@@ -1,0 +1,9 @@
+node_modules
+target
+dist
+.env
+.env.*
+.git
+Dockerfile*
+docker-compose.yml
+**/node_modules

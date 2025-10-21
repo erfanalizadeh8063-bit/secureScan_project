@@ -10,9 +10,11 @@ export default defineConfig({
     },
   },
   server: {
+    host: true,
+    port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080', // در Dev محیط، به بک‌اند لوکال
+        target: 'http://127.0.0.1:8080', 
         changeOrigin: true,
         secure: false,
       },

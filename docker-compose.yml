@@ -11,6 +11,13 @@ services:
       - HTTP_TIMEOUT_MS=10000
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
     networks:
       - securascan
 
@@ -20,7 +27,8 @@ services:
       dockerfile: Dockerfile.frontend
     container_name: securascan-frontend
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "3000:80"
     networks:

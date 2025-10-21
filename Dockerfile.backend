@@ -9,13 +9,6 @@ WORKDIR /app
 
 COPY secureScan_Back/Cargo.toml secureScan_Back/Cargo.lock* ./secureScan_Back/
 WORKDIR /app/secureScan_Back
-
-
-RUN mkdir -p src && echo "fn main() { println!(\"build cache\"); }" > src/main.rs \
- && cargo build --release || true
-
-
-RUN rm -rf src
 COPY secureScan_Back/ ./
 RUN cargo build --release
 
@@ -24,7 +17,7 @@ RUN cargo build --release
 ################
 FROM debian:bookworm-slim
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates libssl3 \
+ && apt-get install -y --no-install-recommends ca-certificates libssl3 curl \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
