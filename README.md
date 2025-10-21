@@ -46,3 +46,21 @@ netsh http show sslcert
 
 Stopping or disabling the service that created the reservation (or rebooting after change) may be required.
 
+Note: On Windows, ports like 8080 may fall into excluded ranges and fail to bind. To avoid this locally, use the override mapping in `docker-compose.override.yml` which maps the backend to `7000:8080`.
+
+Quick test commands (Windows cmd):
+
+```bat
+REM Start the stack (recreate to pick up overrides)
+docker compose up -d --force-recreate
+
+REM Confirm service list
+docker compose ps
+
+REM Check backend health from host
+curl.exe http://localhost:7000/api/health
+
+REM Inspect frontend files inside the container
+docker compose exec frontend sh -lc "ls -1 /usr/share/nginx/html | head -5"
+```
+
