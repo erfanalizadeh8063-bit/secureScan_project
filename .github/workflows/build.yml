@@ -1,0 +1,41 @@
+name: Build SecuraScan
+on:
+  push:
+    branches:
+      - main
+      - feature/**
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [backend, frontend]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        if: matrix.service == 'frontend'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build Frontend
+        if: matrix.service == 'frontend'
+        run: |
+          cd secureScan_Front
+          npm ci
+          npm run build
+
+      - name: Install Rust
+        if: matrix.service == 'backend'
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Build Backend
+        if: matrix.service == 'backend'
+        run: |
+          cd secureScan_Back
+          cargo build --release
