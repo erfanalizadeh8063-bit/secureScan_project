@@ -1,40 +1,32 @@
 ﻿# syntax=docker/dockerfile:1.7
 
-###############
-# Build stage #
-###############
-FROM rust:1.85 AS builder
+############
+# chef base
+############
+FROM rust:1-alpine AS chef
+RUN apk add --no-cache musl-dev pkgconfig openssl-dev build-base curl ca-certificates
+RUN cargo install cargo-chef
 WORKDIR /app
 
+FROM chef AS planner
+COPY secureScan_Back/Cargo.toml secureScan_Back/Cargo.lock ./
+COPY secureScan_Back/src ./src
+WORKDIR /app
+RUN cargo chef prepare --recipe-path recipe.json
 
-RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
-
-
+FROM chef AS builder
+WORKDIR /app
+COPY --from=planner /app/recipe.json recipe.json
 COPY secureScan_Back/ ./secureScan_Back
 WORKDIR /app/secureScan_Back
+RUN cargo chef cook --release --recipe-path /app/recipe.json
+RUN cargo build --release && strip target/release/* || true
 
-
-RUN mkdir -p src && echo "fn main(){}" > src/main.rs && cargo build --release || true
-
-
-COPY secureScan_Back/ ./
-RUN cargo build --release
-
-################
-# Runtime stage #
-################
-FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
+FROM alpine:3.18 AS runtime
+RUN adduser -D -H appuser && apk add --no-cache ca-certificates openssl
 WORKDIR /app
-
-
-COPY --from=builder /app/secureScan_Back/target/release/securascan-backend /usr/local/bin/securascan
-
-ENV BIND_ADDR=0.0.0.0:8080
-ENV ALLOWED_ORIGINS=http://localhost:3000
-ENV SCAN_MAX_CONCURRENCY=4
-ENV HTTP_TIMEOUT_MS=10000
-ENV RUST_LOG=info
-
+COPY --from=builder /app/secureScan_Back/target/release/ /app/
 EXPOSE 8080
-CMD ["/usr/local/bin/securascan"]
+USER appuser
+HEALTHCHECK --interval=30s --timeout=3s --retries=5 CMD wget -qO- http://localhost:8080/health || exit 1
+CMD ["/app/securascan-backend"]

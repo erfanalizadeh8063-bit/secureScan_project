@@ -1,0 +1,9 @@
+**/target
+**/node_modules
+**/.git
+**/.gitignore
+**/.DS_Store
+**/dist
+**/.vite
+*/.env
+**/coverage

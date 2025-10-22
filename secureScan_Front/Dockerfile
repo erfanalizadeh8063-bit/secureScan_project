@@ -1,14 +1,15 @@
-FROM node:20-alpine AS build
-WORKDIR /app
-COPY package.json package-lock.json* yarn.lock* pnpm-lock.yaml* ./
-RUN   if [ -f package-lock.json ]; then npm ci;   elif [ -f yarn.lock ]; then yarn --frozen-lockfile;   elif [ -f pnpm-lock.yaml ]; then npm i -g pnpm && pnpm i --frozen-lockfile;   else npm i; fi
-COPY . .
-RUN npm run build || yarn build || pnpm build
+# syntax=docker/dockerfile:1.7
 
-FROM node:20-alpine
+FROM node:20-alpine AS builder
 WORKDIR /app
-ENV NODE_ENV=production
-COPY --from=build /app/dist ./dist
-RUN npm i -g serve
-EXPOSE 5173
-CMD ["serve", "-s", "dist", "-l", "5173"]
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM nginx:1.27-alpine AS runtime
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+HEALTHCHECK --interval=30s --timeout=3s --retries=5 CMD wget -qO- http://localhost/ || exit 1
+

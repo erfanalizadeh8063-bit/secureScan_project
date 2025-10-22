@@ -1,31 +1,59 @@
+version: "3.9"
 services:
   backend:
     build:
-      context: .
+      context: ./secureScan_Back
       dockerfile: Dockerfile.backend
-    container_name: securescan-backend
-    environment:
-      - BIND_ADDR=0.0.0.0:8080
-      - ALLOWED_ORIGINS=http://localhost:3000
-      - SCAN_MAX_CONCURRENCY=4
-      - HTTP_TIMEOUT_MS=10000
+    container_name: securescan-back
     ports:
-      - "7000:8080"
-    networks:
-      - securescan
+      - "8080:8080"
+    environment:
+      - RUST_LOG=info
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+    profiles: ["prod"]
+    depends_on:
+      frontend:
+        condition: service_started
 
   frontend:
     build:
-      context: .
+      context: ./secureScan_Front
       dockerfile: Dockerfile.frontend
-    container_name: securescan-frontend
-    depends_on:
-      - backend
+    container_name: securescan-front
     ports:
-      - "3000:80"
-    networks:
-      - securescan
+      - "5173:80"
+    profiles: ["prod"]
 
-networks:
-  securescan:
-    driver: bridge
+  backend-dev:
+    image: rust:1-alpine
+    working_dir: /app
+    volumes:
+      - ./secureScan_Back:/app
+      - cargo_target:/app/target
+    command: sh -lc "apk add --no-cache musl-dev pkgconfig openssl-dev build-base cargo-watch && cargo install cargo-watch || true && cargo watch -x 'run'"
+    ports:
+      - "8080:8080"
+    environment:
+      - RUST_LOG=debug
+    profiles: ["dev"]
+
+  frontend-dev:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./secureScan_Front:/app
+      - node_cache:/root/.npm
+    command: sh -lc "npm ci && npm run dev -- --host"
+    ports:
+      - "5173:5173"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    profiles: ["dev"]
+
+volumes:
+  cargo_target:
+  node_cache:
