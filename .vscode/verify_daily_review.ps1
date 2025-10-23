@@ -22,8 +22,8 @@ $hasBash = (Test-Path $bashPath) -and (Test-Path $bashScript)
 if ($hasBash) {
     Write-Host "Git Bash found - running daily_review.sh in QUIET mode..."
     try {
-        # Set QUIET env, run script, redirect all output to null
-        & $bashPath -lc "$env:QUIET=1; ./.vscode/daily_review.sh" *> $null
+    # Set QUIET env, run script, redirect all output to null (use absolute bash path)
+    & "C:\Program Files\Git\bin\bash.exe" -lc "QUIET=1 ./.vscode/daily_review.sh" *> $null
         # Small delay and re-check
         Start-Sleep -Milliseconds 300
         $created = Test-Path $dstPath
