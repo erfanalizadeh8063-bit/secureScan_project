@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: securascan-back
+    env: docker
+    plan: free
+    dockerfilePath: secureScan_Back/Dockerfile.backend
+    dockerContext: .
+    autoDeploy: true
+    envVars:
+      - key: RUST_LOG
+        value: info
+      - key: BIND_ADDR
+        value: 0.0.0.0:8080
+
+  - type: web
+    name: securascan-front
+    env: docker
+    plan: free
+    dockerfilePath: secureScan_Front/Dockerfile.frontend
+    dockerContext: .
+    autoDeploy: true
