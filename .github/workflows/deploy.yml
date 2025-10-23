@@ -1,0 +1,69 @@
+name: Build and push image to GHCR
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            secureScan_Back/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('secureScan_Back/Cargo.lock') }}
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('secureScan_Front/package-lock.json') }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Build backend
+        run: |
+          cd secureScan_Back
+          cargo build --release
+
+      - name: Build frontend
+        run: |
+          cd secureScan_Front
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+          npm run build
+
+      - name: Login to GHCR
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        run: |
+          IMAGE=ghcr.io/${{ github.repository }}/securascan
+          TAG_SHA=${{ github.sha }}
+          docker build -f secureScan_Back/Dockerfile.backend -t $IMAGE:latest -t $IMAGE:$TAG_SHA .
+          docker push $IMAGE:latest
+          docker push $IMAGE:$TAG_SHA
