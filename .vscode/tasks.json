@@ -1,0 +1,114 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build:backend",
+      "type": "shell",
+      "command": "cargo build",
+      "options": { "cwd": "${workspaceFolder}/secureScan_Back" },
+      "group": "build"
+    },
+    {
+      "label": "run:backend",
+      "type": "shell",
+      "command": "cargo run",
+      "options": { "cwd": "${workspaceFolder}/secureScan_Back" },
+      "presentation": { "reveal": "always" }
+    },
+    {
+      "label": "build:frontend",
+      "type": "shell",
+      "command": "npm run build",
+      "options": { "cwd": "${workspaceFolder}/secureScan_Front" },
+      "group": "build"
+    },
+    {
+      "label": "run:frontend",
+      "type": "shell",
+      "command": "npm run dev -- --host",
+      "options": { "cwd": "${workspaceFolder}/secureScan_Front" },
+      "presentation": { "reveal": "always" }
+    },
+    {
+      "label": "docker:up",
+      "type": "shell",
+      "command": "docker compose up -d",
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always" }
+    },
+    {
+      "label": "docker:down",
+      "type": "shell",
+      "command": "docker compose down",
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always" }
+    },
+    {
+      "label": "test:all",
+      "type": "shell",
+      "command": "cargo test && (cd secureScan_Front && npm run build)",
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "silent" }
+    },
+
+    {
+      "label": "daily:review (PowerShell)",
+      "type": "shell",
+      "command": "pwsh",
+      "options": { "cwd": "${workspaceFolder}" },
+      "args": [
+        "-NoProfile",
+        "-Command",
+        "$ErrorActionPreference='Stop';",
+        "$date = Get-Date -Format 'yyyy-MM-dd';",
+        "$dir = 'docs/daily_reviews';",
+        "if (!(Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null };",
+        "$dst = Join-Path $dir ('daily_review_' + $date + '.md');",
+        "$tpl = 'docs/daily_reviews/_template.md';",
+        "if (!(Test-Path $tpl)) { $content = '# Daily review - {{DATE}}`n`n- Done:`n`n- Next:`n`n- Risks:`n`n- Notes:`n'; Set-Content -Path $tpl -Value $content -NoNewline };",
+        "(Get-Content $tpl -Raw).Replace('{{DATE}}', $date) | Set-Content $dst;",
+        "Write-Host ('📄 Created ' + $dst)"
+      ],
+      "runOptions": { "runOn": "folderOpen" },
+      "presentation": { "reveal": "always" }
+    },
+
+    {
+  "label": "daily:review (Bash)",
+  "type": "process",
+  "command": "C:\\Program Files\\Git\\bin\\bash.exe",
+  "args": [
+    "-lc",
+    "./.vscode/daily_review.sh"
+  ],
+  "options": {
+    "cwd": "${workspaceFolder}"
+  },
+  "presentation": {
+    "reveal": "always"
+  }
+}
+
+    ,
+    {
+      "label": "launch:beta (PS)",
+      "type": "shell",
+      "command": "pwsh",
+      "options": { "cwd": "${workspaceFolder}" },
+      "args": ["-NoProfile","-File",".\\.vscode\\launch_beta.ps1"],
+      "presentation": { "reveal": "always" }
+    }
+
+    ,
+    {
+      "label": "verify:daily-review",
+      "type": "shell",
+      "command": "powershell",
+      "options": { "cwd": "${workspaceFolder}" },
+      "args": ["-NoProfile","-File",".\\.vscode\\verify_daily_review.ps1"],
+      "presentation": { "reveal": "always" }
+    }
+
+
+  ]
+}
