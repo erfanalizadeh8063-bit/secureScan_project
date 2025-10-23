@@ -3,8 +3,8 @@ services:
     name: securascan-back
     env: docker
     plan: free
-  dockerfilePath: ./secureScan_Back/Dockerfile.backend
-  dockerContext: ./secureScan_Back
+    dockerfilePath: ./secureScan_Back/Dockerfile.backend
+    dockerContext: ./secureScan_Back
     autoDeploy: true
     envVars:
       - key: RUST_LOG
@@ -16,6 +16,6 @@ services:
     name: securascan-front
     env: docker
     plan: free
-  dockerfilePath: ./secureScan_Front/Dockerfile.frontend
-  dockerContext: ./secureScan_Front
+    dockerfilePath: ./secureScan_Front/Dockerfile.frontend
+    dockerContext: ./secureScan_Front
     autoDeploy: true
