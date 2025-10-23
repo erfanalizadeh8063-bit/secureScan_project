@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1.7
+FROM rust:1-bookworm AS chef
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libssl-dev build-essential ca-certificates tzdata curl strip \
+ && rm -rf /var/lib/apt/lists/*
+RUN cargo install cargo-chef
+WORKDIR /app
+
+FROM chef AS planner
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+# COPY .cargo ./.cargo  # uncomment if present in repo
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
+COPY --from=planner /app/recipe.json /app/recipe.json
+# Use buildkit cache mounts for cargo registry/git
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    cargo chef cook --release --recipe-path recipe.json
+COPY . .
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    cargo build --release
+# Optional: list artifacts to help debugging
+RUN ls -lah /app/target/release
+
+FROM debian:bookworm-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates tzdata curl \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+# Create non-root user and group, then drop privileges
+RUN groupadd -r app && useradd -r -g app -u 10001 appuser || true
+COPY --from=builder /app/target/release/securascan-backend /app/securascan-backend
+COPY entrypoint.sh /app/entrypoint.sh
+RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh && chown -R appuser:app /app
+USER appuser
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s --retries=5 \
+  CMD curl -fsS http://localhost:8080/health || curl -fsS http://localhost:8080/api/health || exit 1
+ENTRYPOINT ["/app/entrypoint.sh"]
+
+# OPTIONAL: strip binary to reduce size if strip is available in the build image
+# This step is intentionally not run in the runtime image to avoid needing binutils in runtime.

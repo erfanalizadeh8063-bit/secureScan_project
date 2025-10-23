@@ -1,6 +1,7 @@
 version: "3.9"
 services:
   backend:
+    image: securescan-backend:glibc
     build:
       context: ./secureScan_Back
       dockerfile: Dockerfile.backend

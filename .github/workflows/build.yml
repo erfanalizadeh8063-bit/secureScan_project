@@ -14,6 +14,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Cache frontend npm
+        if: matrix.service == 'frontend'
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-cache-${{ runner.os }}-${{ hashFiles('secureScan_Front/package-lock.json') }}
+
+      - name: Cache backend cargo
+        if: matrix.service == 'backend'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            secureScan_Back/target
+          key: cargo-cache-${{ runner.os }}-${{ hashFiles('secureScan_Back/Cargo.lock') }}
+
       - name: Set up Node.js
         if: matrix.service == 'frontend'
         uses: actions/setup-node@v4
