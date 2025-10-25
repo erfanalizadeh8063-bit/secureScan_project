@@ -2,30 +2,42 @@ services:
   - type: web
     name: securascan-back
     env: docker
-    plan: free
     dockerfilePath: ./secureScan_Back/Dockerfile.backend
     dockerContext: ./secureScan_Back
+    healthCheckPath: /healthz
     autoDeploy: true
     envVars:
       - key: RUST_LOG
         value: info
-      - key: FRONT_ORIGIN
-        value: "http://localhost:3000"
-      - key: PORT
-        value: "8080"
-    # health check path used by Render to verify the service is alive
-    healthCheckPath: /healthz
-      # Do NOT set BIND_ADDR here; the startup script reads $PORT at runtime and
-      # sets BIND_ADDR accordingly so the service uses the platform-provided port.
+      # FRONT_ORIGIN will be set after frontend URL is known
 
   - type: static_site
     name: securascan-front
-    plan: free
-    buildCommand: "npm ci && npm run build"
+    buildCommand: cd secureScan_Front && npm ci && npm run build
     staticPublishPath: secureScan_Front/dist
     autoDeploy: true
+    # VITE_API_URL will be set to backend URL
+services:
+  - type: web
+    name: securascan-back
+    env: docker
+    dockerfilePath: ./secureScan_Back/Dockerfile.backend
+    dockerContext: ./secureScan_Back
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: RUST_LOG
+        value: info
+      # این را بعد از بالا آمدن فرانت با URL واقعی اپدیت کن
+      # - key: FRONT_ORIGIN
+      #   value: https://<your-frontend-url>
 
-# Notes:
-#  - After both services are deployed, set the backend's FRONT_ORIGIN env to the static site URL
-#    (e.g. https://securascan-front-on-render.example) so CORS is restricted to the correct origin.
-#  - Set the static site's VITE_API_URL (or similar) to the backend URL and redeploy the static site.
+  - type: static_site
+    name: securascan-front
+    buildCommand: cd secureScan_Front && npm ci && npm run build
+    staticPublishPath: secureScan_Front/dist
+    autoDeploy: true
+    # پس از بالا آمدن بک، این را در UI سرویس Static Site ست کن:
+    # envVars:
+    #   - key: VITE_API_URL
+    #     value: https://<your-backend-url>

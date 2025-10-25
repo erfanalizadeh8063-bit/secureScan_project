@@ -2,7 +2,7 @@
 use actix_web::dev::{ServiceRequest, ServiceResponse, Transform};
 use actix_web::http::header;
 use actix_cors::Cors;
-use futures_util::future::{LocalBoxFuture, Ready};
+use futures_util::future::{LocalBoxFuture, Ready, ready as fut_ready};
 use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -52,7 +52,7 @@ where
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        ready(Ok(TimeoutMiddlewareService {
+        fut_ready(Ok(TimeoutMiddlewareService {
             service: Arc::new(service),
             timeout: self.timeout,
         }))
@@ -159,9 +159,8 @@ async fn main() -> std::io::Result<()> {
     })
         .bind(bind.clone())?
         .keep_alive(Duration::from_secs(75))
-        .client_timeout(Duration::from_secs(30))
-        .client_shutdown(Duration::from_secs(5))
-        .run();
+        .shutdown_timeout(5)
+            .run();
 
     let srv_handle = server.handle();
     let server_fut = tokio::spawn(server);
