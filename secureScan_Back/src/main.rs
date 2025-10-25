@@ -2,7 +2,7 @@
 use actix_web::dev::{ServiceRequest, ServiceResponse, Transform};
 use actix_web::http::header;
 use actix_cors::Cors;
-use futures_util::future::{LocalBoxFuture, Ready, ready};
+use futures_util::future::{LocalBoxFuture, Ready};
 use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -89,10 +89,9 @@ where
                 Ok(Ok(res)) => Ok(res),
                 Ok(Err(e)) => Err(e),
                 Err(_) => {
-                    let resp = HttpResponse::RequestTimeout()
-                        .insert_header((header::CONTENT_TYPE, "text/plain; charset=utf-8"))
-                        .body("request timeout");
-                    Err(actix_web::error::ErrorRequestTimeout(resp))
+                    // Return a request timeout error with a string message (ErrorRequestTimeout
+                    // expects a Display, not an HttpResponse).
+                    Err(actix_web::error::ErrorRequestTimeout("request timeout"))
                 }
             }
         })
@@ -124,25 +123,29 @@ async fn main() -> std::io::Result<()> {
         info!("startup complete, marking ready");
     }
 
-    // CORS setup from env
-    let mut cors = Cors::default()
-        .allowed_methods(vec!["GET", "POST", "OPTIONS"])
-        .allowed_headers(vec![header::CONTENT_TYPE, header::AUTHORIZATION, header::ACCEPT])
-        .supports_credentials()
-        .max_age(3600);
-    for origin in allowed_origins.split(',') {
-        let o = origin.trim();
-        if !o.is_empty() {
-            cors = cors.allowed_origin(o);
-        }
-    }
+    // Note: build a fresh Cors per-app since Cors does not implement Clone
+    // allowed_origins is a String we captured into the closure below.
 
     // server builder
+    let allowed = allowed_origins.clone();
     let server = HttpServer::new(move || {
+        // build cors per-app
+        let mut cors = Cors::default()
+            .allowed_methods(vec!["GET", "POST", "OPTIONS"])
+            .allowed_headers(vec![header::CONTENT_TYPE, header::AUTHORIZATION, header::ACCEPT])
+            .supports_credentials()
+            .max_age(3600);
+        for origin in allowed.split(',') {
+            let o = origin.trim();
+            if !o.is_empty() {
+                cors = cors.allowed_origin(o);
+            }
+        }
+
         App::new()
             .wrap(middleware::Logger::default())
             .wrap(TimeoutMiddleware { timeout: Duration::from_secs(10) })
-            .wrap(cors.clone())
+            .wrap(cors)
             // limit JSON payloads to 10MB
             .app_data(aw_web::JsonConfig::default().limit(10 * 1024 * 1024))
             .app_data(ready_flag_data.clone())
