@@ -1,6 +1,13 @@
 #!/usr/bin/env pwsh
 # Smoke test for SecuraScan (PowerShell)
 Set-StrictMode -Version Latest
+
+# Ensure we run from the repository root (script may be invoked from another CWD)
+if ($PSScriptRoot) {
+    $repoRoot = Join-Path $PSScriptRoot '..' | Resolve-Path -Relative
+    Set-Location $repoRoot
+}
+
 Write-Host "Stopping any existing compose stacks..."
 docker compose down --remove-orphans
 
