@@ -4,7 +4,7 @@ Set-StrictMode -Version Latest
 
 # Ensure we run from the repository root (script may be invoked from another CWD)
 if ($PSScriptRoot) {
-    $repoRoot = Join-Path $PSScriptRoot '..' | Resolve-Path -Relative
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
     Set-Location $repoRoot
 }
 
