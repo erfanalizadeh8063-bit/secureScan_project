@@ -55,6 +55,13 @@ What the workflow does:
 Notes & troubleshooting:
 - Do not hard-code secrets in this repo. Add them as GitHub repo secrets as described above.
 - The Render API calls used in the workflow are idempotent — re-running the workflow is safe.
+ 
+Frontend (Render static site) notes:
+
+- The frontend is deployed as a Render Static Site and must be built with the environment variable `VITE_API_URL` set to your backend public URL (for example `https://securascan-back.onrender.com`).
+- After you set `VITE_API_URL` in the Render Static Site Environment, click "Clear build cache & Redeploy" in the Render UI so the build picks up the env (Vite inlines env variables at build time).
+
+If you prefer to deploy the frontend as a Docker service with nginx, you must set `BACKEND_ORIGIN` on the frontend service and ensure nginx templates the upstream (see `secureScan_Front/nginx.conf.template` if present).
 ## Windows ports note
 
 On some Windows hosts, the OS reserves ranges of TCP ports which prevents Docker from publishing container ports on those host ports. If you see failures binding ports like 8080, 8180 or other ports in the 8000–8500 range, this is likely due to Windows "excluded port ranges" (for example, caused by services such as Internet Connection Sharing or driver reservations).

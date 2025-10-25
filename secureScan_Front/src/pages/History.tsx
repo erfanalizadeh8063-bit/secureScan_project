@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Api } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 import Card from "@/components/Card";
 
@@ -30,11 +31,8 @@ export default function History() {
       try {
         setLoading(true);
         setErr(null);
-        const r = await fetch(`/api/scans?limit=200`);
-        if (!r.ok) throw new Error("failed to fetch scans history");
-        const data = (await r.json()) as ScanItem[] | { items: ScanItem[] };
-        const list = Array.isArray(data) ? data : (data as any)?.items || [];
-        setRows(normalizeScans(list));
+  const list = await Api.listScans({ limit: 200 });
+  setRows(normalizeScans(Array.isArray(list) ? list : (list as any)?.items || []));
       } catch (e: any) {
         // fallback نمایش برای زمانی که بک‌اند آماده نیست
         setRows(

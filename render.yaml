@@ -16,28 +16,4 @@ services:
     buildCommand: cd secureScan_Front && npm ci && npm run build
     staticPublishPath: secureScan_Front/dist
     autoDeploy: true
-    # VITE_API_URL will be set to backend URL
-services:
-  - type: web
-    name: securascan-back
-    env: docker
-    dockerfilePath: ./secureScan_Back/Dockerfile.backend
-    dockerContext: ./secureScan_Back
-    healthCheckPath: /healthz
-    autoDeploy: true
-    envVars:
-      - key: RUST_LOG
-        value: info
-      # این را بعد از بالا آمدن فرانت با URL واقعی اپدیت کن
-      # - key: FRONT_ORIGIN
-      #   value: https://<your-frontend-url>
-
-  - type: static_site
-    name: securascan-front
-    buildCommand: cd secureScan_Front && npm ci && npm run build
-    staticPublishPath: secureScan_Front/dist
-    autoDeploy: true
-    # پس از بالا آمدن بک، این را در UI سرویس Static Site ست کن:
-    # envVars:
-    #   - key: VITE_API_URL
-    #     value: https://<your-backend-url>
+    # VITE_API_URL will be set to backend URL (set via Render UI or CI before deploy)
