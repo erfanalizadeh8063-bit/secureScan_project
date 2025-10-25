@@ -19,6 +19,12 @@ async fn health() -> HttpResponse {
     HttpResponse::Ok().json(serde_json::json!({"status":"ok"}))
 }
 
+// compatibility endpoint expected by some healthcheck tooling
+#[get("/healthz")]
+async fn healthz() -> HttpResponse {
+    HttpResponse::Ok().json(serde_json::json!({"status":"ok"}))
+}
+
 #[get("/ready")]
 async fn ready(ready_flag: aw_web::Data<Arc<AtomicBool>>) -> HttpResponse {
     if ready_flag.load(Ordering::SeqCst) {
@@ -137,6 +143,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(aw_web::JsonConfig::default().limit(10 * 1024 * 1024))
             .app_data(ready_flag_data.clone())
             .service(health)
+            .service(healthz)
             .service(ready)
             .route(
                 "/api/ci/webhook/github",
