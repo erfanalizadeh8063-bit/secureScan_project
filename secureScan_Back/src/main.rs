@@ -105,7 +105,9 @@ async fn main() -> std::io::Result<()> {
     tracing_subscriber::fmt::init();
 
     let bind = env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
-    let allowed_origins = env::var("ALLOWED_ORIGINS").unwrap_or_else(|_| "http://localhost:5173".to_string());
+    // FRONT_ORIGIN is a comma-separated list of allowed origins for the frontend,
+    // default to the local static site host used in docker-compose during dev.
+    let allowed_origins = env::var("FRONT_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".to_string());
 
     info!(%bind, %allowed_origins, "Starting server");
 
@@ -125,6 +127,8 @@ async fn main() -> std::io::Result<()> {
     // CORS setup from env
     let mut cors = Cors::default()
         .allowed_methods(vec!["GET", "POST", "OPTIONS"])
+        .allowed_headers(vec![header::CONTENT_TYPE, header::AUTHORIZATION, header::ACCEPT])
+        .supports_credentials()
         .max_age(3600);
     for origin in allowed_origins.split(',') {
         let o = origin.trim();

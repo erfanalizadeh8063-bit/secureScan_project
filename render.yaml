@@ -9,14 +9,23 @@ services:
     envVars:
       - key: RUST_LOG
         value: info
+      - key: FRONT_ORIGIN
+        value: "http://localhost:3000"
+      - key: PORT
+        value: "8080"
+    # health check path used by Render to verify the service is alive
+    healthCheckPath: /healthz
       # Do NOT set BIND_ADDR here; the startup script reads $PORT at runtime and
       # sets BIND_ADDR accordingly so the service uses the platform-provided port.
 
-  - type: static
+  - type: static_site
     name: securascan-front
-    env: static
     plan: free
-    root: secureScan_Front
     buildCommand: "npm ci && npm run build"
-    staticPublishPath: dist
+    staticPublishPath: secureScan_Front/dist
     autoDeploy: true
+
+# Notes:
+#  - After both services are deployed, set the backend's FRONT_ORIGIN env to the static site URL
+#    (e.g. https://securascan-front-on-render.example) so CORS is restricted to the correct origin.
+#  - Set the static site's VITE_API_URL (or similar) to the backend URL and redeploy the static site.
