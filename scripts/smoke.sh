@@ -7,8 +7,8 @@ cd "$ROOT_DIR"
 echo "Stopping any existing compose stacks..."
 docker compose down --remove-orphans
 
-echo "Bringing up services (build)..."
-docker compose up --build -d
+echo "Bringing up services (build) (prod profile)..."
+docker compose --profile prod up --build -d
 
 sleep 4
 

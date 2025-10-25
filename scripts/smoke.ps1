@@ -11,8 +11,8 @@ if ($PSScriptRoot) {
 Write-Host "Stopping any existing compose stacks..."
 docker compose down --remove-orphans
 
-Write-Host "Bringing up services (build)..."
-docker compose up --build -d
+Write-Host "Bringing up services (build) (prod profile)..."
+docker compose --profile prod up --build -d
 
 Start-Sleep -Seconds 4
 
