@@ -21,39 +21,56 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y jq curl
 
-      - name: Validate required secrets
+      - name: Validate & normalize secrets
+        id: norm
+        env:
+          RAW_KEY:   ${{ secrets.RENDER_API_KEY }}
+          RAW_BACK:  ${{ secrets.RENDER_BACK_SERVICE_ID }}
+          RAW_FRONT: ${{ secrets.RENDER_FRONT_SERVICE_ID }}
+          RAW_BASE:  ${{ env.RENDER_API_BASE }}
         run: |
           set -e
-          [ -n "${{ secrets.RENDER_API_KEY }}" ] || (echo "❌ Missing RENDER_API_KEY" && exit 1)
-          [ -n "${{ secrets.RENDER_BACK_SERVICE_ID }}" ] || (echo "❌ Missing RENDER_BACK_SERVICE_ID" && exit 1)
-          [ -n "${{ secrets.RENDER_FRONT_SERVICE_ID }}" ] || (echo "❌ Missing RENDER_FRONT_SERVICE_ID" && exit 1)
-          echo "✅ Secrets present"
+          [ -n "$RAW_KEY" ]   || (echo "❌ Missing RENDER_API_KEY" && exit 1)
+          [ -n "$RAW_BACK" ]  || (echo "❌ Missing RENDER_BACK_SERVICE_ID" && exit 1)
+          [ -n "$RAW_FRONT" ] || (echo "❌ Missing RENDER_FRONT_SERVICE_ID" && exit 1)
+          [ -n "$RAW_BASE" ]  || (echo "❌ Missing RENDER_API_BASE" && exit 1)
+          KEY="$(printf %s "$RAW_KEY"   | tr -d '\r\n')"
+          BACK="$(printf %s "$RAW_BACK"  | tr -d '\r\n \t')"
+          FRONT="$(printf %s "$RAW_FRONT" | tr -d '\r\n \t')"
+          BASE="$(printf %s "$RAW_BASE"  | tr -d '\r\n \t')"
+          BASE="${BASE%/}"
+          echo "BASE=$BASE"   >> "$GITHUB_OUTPUT"
+          echo "BACK=$BACK"   >> "$GITHUB_OUTPUT"
+          echo "FRONT=$FRONT" >> "$GITHUB_OUTPUT"
+          echo "Normalized: $BASE/services/$BACK ; $BASE/services/$FRONT"
 
       - name: Fetch backend service info
         id: back_info
         env:
-          KEY: ${{ secrets.RENDER_API_KEY }}
-          ID:  ${{ secrets.RENDER_BACK_SERVICE_ID }}
+          BASE: ${{ steps.norm.outputs.BASE }}
+          BACK: ${{ steps.norm.outputs.BACK }}
         run: |
           set -e
+          KEY="${{ secrets.RENDER_API_KEY }}"
           curl -fsS -H "Accept: application/json" -H "Authorization: Bearer $KEY" \
-            "$RENDER_API_BASE/services/$ID" > backend.json
-          # URL ممکن است در فیلدهای مختلف باشد؛ همه را چک کن
+            "$BASE/services/$BACK" > backend.json
+          # URL may live in different fields; check them all
           cat backend.json | jq -r '
             .serviceDetails.url // .url // .service.url // empty
           ' > backend_url.txt
-          sed -i 's:/*$::' backend_url.txt || true   # حذف / انتهایی
+          sed -i 's:/*$::' backend_url.txt || true   # remove trailing slashes
           echo "Backend URL: $(cat backend_url.txt || echo '')"
 
       - name: Fetch frontend service info
         id: front_info
         env:
-          KEY: ${{ secrets.RENDER_API_KEY }}
-          ID:  ${{ secrets.RENDER_FRONT_SERVICE_ID }}
+          BASE: ${{ steps.norm.outputs.BASE }}
+          FRONT: ${{ steps.norm.outputs.FRONT }}
         run: |
           set -e
+          KEY="${{ secrets.RENDER_API_KEY }}"
           curl -fsS -H "Accept: application/json" -H "Authorization: Bearer $KEY" \
-            "$RENDER_API_BASE/services/$ID" > frontend.json
+            "$BASE/services/$FRONT" > frontend.json
           cat frontend.json | jq -r '
             .serviceDetails.url // .url // .service.url // empty
           ' > frontend_url.txt
@@ -62,32 +79,34 @@ jobs:
 
       - name: Upsert frontend env VITE_API_URL (→ backend)
         env:
-          KEY: ${{ secrets.RENDER_API_KEY }}
-          ID:  ${{ secrets.RENDER_FRONT_SERVICE_ID }}
+          BASE: ${{ steps.norm.outputs.BASE }}
+          FRONT: ${{ steps.norm.outputs.FRONT }}
         run: |
           set -e
+          KEY="${{ secrets.RENDER_API_KEY }}"
           BACK_URL="$(cat backend_url.txt || true)"
           if [ -z "$BACK_URL" ]; then
             echo "⚠️ Backend URL not detected; skipping VITE_API_URL update"
             exit 0
           fi
           BODY="$(jq -nc --arg k VITE_API_URL --arg v "$BACK_URL" '{key:$k, value:$v, scope:"env"}')"
-          # POST (create) → اگر خطا داد، PUT (update)
+          # POST (create) → if fails, PUT (update)
           curl -sS -X POST -H "Accept: application/json" -H "Content-Type: application/json" \
                -H "Authorization: Bearer $KEY" \
                -d "$BODY" \
-               "$RENDER_API_BASE/services/$ID/env-vars" \
+               "$BASE/services/$FRONT/env-vars" \
           || curl -sS -X PUT -H "Accept: application/json" -H "Content-Type: application/json" \
                -H "Authorization: Bearer $KEY" \
                -d "$BODY" \
-               "$RENDER_API_BASE/services/$ID/env-vars"
+               "$BASE/services/$FRONT/env-vars"
 
       - name: Upsert backend env FRONT_ORIGIN (→ frontend)
         env:
-          KEY: ${{ secrets.RENDER_API_KEY }}
-          ID:  ${{ secrets.RENDER_BACK_SERVICE_ID }}
+          BASE: ${{ steps.norm.outputs.BASE }}
+          BACK: ${{ steps.norm.outputs.BACK }}
         run: |
           set -e
+          KEY="${{ secrets.RENDER_API_KEY }}"
           FRONT_URL="$(cat frontend_url.txt || true)"
           if [ -z "$FRONT_URL" ]; then
             echo "⚠️ Frontend URL not detected; skipping FRONT_ORIGIN update"
@@ -97,33 +116,35 @@ jobs:
           curl -sS -X POST -H "Accept: application/json" -H "Content-Type: application/json" \
                -H "Authorization: Bearer $KEY" \
                -d "$BODY" \
-               "$RENDER_API_BASE/services/$ID/env-vars" \
+               "$BASE/services/$BACK/env-vars" \
           || curl -sS -X PUT -H "Accept: application/json" -H "Content-Type: application/json" \
                -H "Authorization: Bearer $KEY" \
                -d "$BODY" \
-               "$RENDER_API_BASE/services/$ID/env-vars"
+               "$BASE/services/$BACK/env-vars"
 
       - name: Trigger FRONTEND deploy
         env:
-          KEY: ${{ secrets.RENDER_API_KEY }}
-          ID:  ${{ secrets.RENDER_FRONT_SERVICE_ID }}
+          BASE: ${{ steps.norm.outputs.BASE }}
+          FRONT: ${{ steps.norm.outputs.FRONT }}
         run: |
           set -e
+          KEY="${{ secrets.RENDER_API_KEY }}"
           echo "🚀 Triggering frontend deploy…"
           curl -fsS -X POST -H "Accept: application/json" \
                -H "Authorization: Bearer $KEY" \
-               "$RENDER_API_BASE/services/$ID/deploys"
+               "$BASE/services/$FRONT/deploys"
 
       - name: Trigger BACKEND deploy
         env:
-          KEY: ${{ secrets.RENDER_API_KEY }}
-          ID:  ${{ secrets.RENDER_BACK_SERVICE_ID }}
+          BASE: ${{ steps.norm.outputs.BASE }}
+          BACK: ${{ steps.norm.outputs.BACK }}
         run: |
           set -e
+          KEY="${{ secrets.RENDER_API_KEY }}"
           echo "🚀 Triggering backend deploy…"
           curl -fsS -X POST -H "Accept: application/json" \
                -H "Authorization: Bearer $KEY" \
-               "$RENDER_API_BASE/services/$ID/deploys"
+               "$BASE/services/$BACK/deploys"
 
       - name: Wait for BACKEND health (/healthz)
         run: |
