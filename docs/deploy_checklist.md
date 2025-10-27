@@ -70,3 +70,10 @@ curl -I https://<your-static-site-url>
 ```
 
 If anything fails, collect logs from Render (service dashboard) and check the build logs for the static site to confirm `VITE_API_URL` was set during build.
+
+## Quick smoke guide — Frontend on Render (Docker Web)
+
+- In Render → select the frontend service `securascan-front` → Environment (tab): set
+   `VITE_API_URL=https://<your-backend-url>`
+- Trigger a deploy (or Clear build cache & Redeploy) so the Vite build picks up `VITE_API_URL` at build time.
+- Verify root `/` returns HTTP 200 (or 304). If you see 502, check the service logs and ensure the container is binding to the port provided by Render (Render exposes $PORT to the container). The Dockerfile uses `serve -s dist -l ${PORT}` which binds to the provided port.

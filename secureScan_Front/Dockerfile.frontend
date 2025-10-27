@@ -1,3 +1,29 @@
+####
+# Dockerfile.frontend
+# This Dockerfile builds the Vite React app and serves the built `dist` using `serve`.
+# IMPORTANT: Set environment variable VITE_API_URL in Render (Environment tab).
+# It will be available at build time and baked into the Vite bundle.
+####
+
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
+
+RUN npm run build
+
+
+FROM node:20-alpine AS runtime
+WORKDIR /app
+RUN npm i -g serve
+COPY --from=build /app/dist ./dist
+ENV NODE_ENV=production
+# Render provides $PORT at runtime; use it directly
+CMD ["sh", "-c", "serve -s dist -l ${PORT}"]
 # syntax=docker/dockerfile:1.7
 
 FROM node:20-alpine AS builder
