@@ -12,8 +12,11 @@ services:
       # FRONT_ORIGIN will be set after frontend URL is known
 
   - type: static_site
+  - type: web
     name: securascan-front
-    buildCommand: cd secureScan_Front && npm ci && npm run build
-    staticPublishPath: secureScan_Front/dist
+    env: docker
+    dockerfilePath: secureScan_Front/Dockerfile.frontend
+    dockerContext: secureScan_Front
     autoDeploy: true
-    # VITE_API_URL will be set to backend URL (set via Render UI or CI before deploy)
+    # IMPORTANT: Set environment variable VITE_API_URL in Render (Environment tab).
+    # It will be available at build time and baked into the Vite bundle.
