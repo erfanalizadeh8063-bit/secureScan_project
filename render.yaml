@@ -2,20 +2,18 @@ services:
   - type: web
     name: securascan-back
     env: docker
-    plan: free
     dockerfilePath: ./secureScan_Back/Dockerfile.backend
     dockerContext: ./secureScan_Back
+    healthCheckPath: /healthz
     autoDeploy: true
     envVars:
       - key: RUST_LOG
         value: info
-      - key: BIND_ADDR
-        value: 0.0.0.0:8080
+      # FRONT_ORIGIN will be set after frontend URL is known
 
-  - type: web
+  - type: static_site
     name: securascan-front
-    env: docker
-    plan: free
-    dockerfilePath: ./secureScan_Front/Dockerfile.frontend
-    dockerContext: ./secureScan_Front
+    buildCommand: cd secureScan_Front && npm ci && npm run build
+    staticPublishPath: secureScan_Front/dist
     autoDeploy: true
+    # VITE_API_URL will be set to backend URL (set via Render UI or CI before deploy)

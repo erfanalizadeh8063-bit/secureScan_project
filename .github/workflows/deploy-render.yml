@@ -1,0 +1,165 @@
+name: Deploy → Render
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+env:
+  RENDER_API_BASE: https://api.render.com/v1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install jq & curl (ensure)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq curl
+
+      - name: Validate required secrets
+        run: |
+          set -e
+          [ -n "${{ secrets.RENDER_API_KEY }}" ] || (echo "❌ Missing RENDER_API_KEY" && exit 1)
+          [ -n "${{ secrets.RENDER_BACK_SERVICE_ID }}" ] || (echo "❌ Missing RENDER_BACK_SERVICE_ID" && exit 1)
+          [ -n "${{ secrets.RENDER_FRONT_SERVICE_ID }}" ] || (echo "❌ Missing RENDER_FRONT_SERVICE_ID" && exit 1)
+          echo "✅ Secrets present"
+
+      - name: Fetch backend service info
+        id: back_info
+        env:
+          KEY: ${{ secrets.RENDER_API_KEY }}
+          ID:  ${{ secrets.RENDER_BACK_SERVICE_ID }}
+        run: |
+          set -e
+          curl -fsS -H "Accept: application/json" -H "Authorization: Bearer $KEY" \
+            "$RENDER_API_BASE/services/$ID" > backend.json
+          # URL ممکن است در فیلدهای مختلف باشد؛ همه را چک کن
+          cat backend.json | jq -r '
+            .serviceDetails.url // .url // .service.url // empty
+          ' > backend_url.txt
+          sed -i 's:/*$::' backend_url.txt || true   # حذف / انتهایی
+          echo "Backend URL: $(cat backend_url.txt || echo '')"
+
+      - name: Fetch frontend service info
+        id: front_info
+        env:
+          KEY: ${{ secrets.RENDER_API_KEY }}
+          ID:  ${{ secrets.RENDER_FRONT_SERVICE_ID }}
+        run: |
+          set -e
+          curl -fsS -H "Accept: application/json" -H "Authorization: Bearer $KEY" \
+            "$RENDER_API_BASE/services/$ID" > frontend.json
+          cat frontend.json | jq -r '
+            .serviceDetails.url // .url // .service.url // empty
+          ' > frontend_url.txt
+          sed -i 's:/*$::' frontend_url.txt || true
+          echo "Frontend URL: $(cat frontend_url.txt || echo '')"
+
+      - name: Upsert frontend env VITE_API_URL (→ backend)
+        env:
+          KEY: ${{ secrets.RENDER_API_KEY }}
+          ID:  ${{ secrets.RENDER_FRONT_SERVICE_ID }}
+        run: |
+          set -e
+          BACK_URL="$(cat backend_url.txt || true)"
+          if [ -z "$BACK_URL" ]; then
+            echo "⚠️ Backend URL not detected; skipping VITE_API_URL update"
+            exit 0
+          fi
+          BODY="$(jq -nc --arg k VITE_API_URL --arg v "$BACK_URL" '{key:$k, value:$v, scope:"env"}')"
+          # POST (create) → اگر خطا داد، PUT (update)
+          curl -sS -X POST -H "Accept: application/json" -H "Content-Type: application/json" \
+               -H "Authorization: Bearer $KEY" \
+               -d "$BODY" \
+               "$RENDER_API_BASE/services/$ID/env-vars" \
+          || curl -sS -X PUT -H "Accept: application/json" -H "Content-Type: application/json" \
+               -H "Authorization: Bearer $KEY" \
+               -d "$BODY" \
+               "$RENDER_API_BASE/services/$ID/env-vars"
+
+      - name: Upsert backend env FRONT_ORIGIN (→ frontend)
+        env:
+          KEY: ${{ secrets.RENDER_API_KEY }}
+          ID:  ${{ secrets.RENDER_BACK_SERVICE_ID }}
+        run: |
+          set -e
+          FRONT_URL="$(cat frontend_url.txt || true)"
+          if [ -z "$FRONT_URL" ]; then
+            echo "⚠️ Frontend URL not detected; skipping FRONT_ORIGIN update"
+            exit 0
+          fi
+          BODY="$(jq -nc --arg k FRONT_ORIGIN --arg v "$FRONT_URL" '{key:$k, value:$v, scope:"env"}')"
+          curl -sS -X POST -H "Accept: application/json" -H "Content-Type: application/json" \
+               -H "Authorization: Bearer $KEY" \
+               -d "$BODY" \
+               "$RENDER_API_BASE/services/$ID/env-vars" \
+          || curl -sS -X PUT -H "Accept: application/json" -H "Content-Type: application/json" \
+               -H "Authorization: Bearer $KEY" \
+               -d "$BODY" \
+               "$RENDER_API_BASE/services/$ID/env-vars"
+
+      - name: Trigger FRONTEND deploy
+        env:
+          KEY: ${{ secrets.RENDER_API_KEY }}
+          ID:  ${{ secrets.RENDER_FRONT_SERVICE_ID }}
+        run: |
+          set -e
+          echo "🚀 Triggering frontend deploy…"
+          curl -fsS -X POST -H "Accept: application/json" \
+               -H "Authorization: Bearer $KEY" \
+               "$RENDER_API_BASE/services/$ID/deploys"
+
+      - name: Trigger BACKEND deploy
+        env:
+          KEY: ${{ secrets.RENDER_API_KEY }}
+          ID:  ${{ secrets.RENDER_BACK_SERVICE_ID }}
+        run: |
+          set -e
+          echo "🚀 Triggering backend deploy…"
+          curl -fsS -X POST -H "Accept: application/json" \
+               -H "Authorization: Bearer $KEY" \
+               "$RENDER_API_BASE/services/$ID/deploys"
+
+      - name: Wait for BACKEND health (/healthz)
+        run: |
+          set -e
+          BACK_URL="$(cat backend_url.txt || true)"
+          if [ -z "$BACK_URL" ]; then
+            echo "⚠️ Backend URL unknown; skipping health check"
+            exit 0
+          fi
+          echo "🩺 Polling $BACK_URL/healthz"
+          for i in $(seq 1 20); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BACK_URL/healthz" || echo 000)
+            echo " attempt $i → $CODE"
+            [ "$CODE" = "200" ] && { echo "✅ Backend healthy"; exit 0; }
+            sleep 6
+          done
+          echo "❌ Backend not healthy in time"; exit 1
+
+      - name: Wait for FRONTEND root
+        run: |
+          set -e
+          FRONT_URL="$(cat frontend_url.txt || true)"
+          if [ -z "$FRONT_URL" ]; then
+            echo "⚠️ Frontend URL unknown; skipping"
+            exit 0
+          fi
+          echo "🌐 Polling $FRONT_URL"
+          for i in $(seq 1 20); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" "$FRONT_URL" || echo 000)
+            echo " attempt $i → $CODE"
+            [ "$CODE" = "200" ] || [ "$CODE" = "304" ] && { echo "✅ Frontend serving"; exit 0; }
+            sleep 6
+          done
+          echo "❌ Frontend not serving in time"; exit 1
+
+      - name: Final URLs
+        run: |
+          echo "Backend URL : $(cat backend_url.txt  || echo 'unknown')"
+          echo "Frontend URL: $(cat frontend_url.txt || echo 'unknown')"

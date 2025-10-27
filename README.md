@@ -31,6 +31,37 @@ Copy this to `.env` or pass through docker-compose:
 - Use Docker / docker-compose for a reproducible environment if desired.
 - Do not commit real secrets; keep `.env` in `.gitignore`.
 
+## Deploy on Render (Blueprint)
+
+This repository includes a Render blueprint (`render.yaml`) and GitHub Actions workflows to build and deploy the backend (Docker) and the frontend (Static site).
+
+Quick instructions:
+
+1. Create two services on Render using `render.yaml` (you can import the blueprint in the Render UI):
+	- `securascan-back` (type: web, env: docker) — uses `secureScan_Back/Dockerfile.backend` and exposes `/healthz`.
+	- `securascan-front` (type: static_site) — build command runs in `secureScan_Front` and publishes `secureScan_Front/dist`.
+
+2. In the GitHub repository Settings → Secrets, add these repo secrets:
+	- `RENDER_API_KEY` — Render API key with deploy permissions.
+	- `RENDER_BACK_SERVICE_ID` — Service ID for `securascan-back` on Render.
+	- `RENDER_FRONT_SERVICE_ID` — Service ID for `securascan-front` on Render.
+
+3. Trigger the workflow `Deploy → Render` from Actions or push to `main`.
+
+What the workflow does:
+- Builds backend and frontend locally in CI (via `.github/workflows/build.yml`).
+- On deploy (`.github/workflows/deploy-render.yml`) it queries Render for service URLs, sets `VITE_API_URL` for the frontend, triggers frontend redeploy, then sets `FRONT_ORIGIN` for backend and triggers backend redeploy. It waits for backend `/healthz` and frontend root to return healthy responses.
+
+Notes & troubleshooting:
+- Do not hard-code secrets in this repo. Add them as GitHub repo secrets as described above.
+- The Render API calls used in the workflow are idempotent — re-running the workflow is safe.
+ 
+Frontend (Render static site) notes:
+
+- The frontend is deployed as a Render Static Site and must be built with the environment variable `VITE_API_URL` set to your backend public URL (for example `https://securascan-back.onrender.com`).
+- After you set `VITE_API_URL` in the Render Static Site Environment, click "Clear build cache & Redeploy" in the Render UI so the build picks up the env (Vite inlines env variables at build time).
+
+If you prefer to deploy the frontend as a Docker service with nginx, you must set `BACKEND_ORIGIN` on the frontend service and ensure nginx templates the upstream (see `secureScan_Front/nginx.conf.template` if present).
 ## Windows ports note
 
 On some Windows hosts, the OS reserves ranges of TCP ports which prevents Docker from publishing container ports on those host ports. If you see failures binding ports like 8080, 8180 or other ports in the 8000–8500 range, this is likely due to Windows "excluded port ranges" (for example, caused by services such as Internet Connection Sharing or driver reservations).

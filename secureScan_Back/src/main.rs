@@ -2,7 +2,7 @@
 use actix_web::dev::{ServiceRequest, ServiceResponse, Transform};
 use actix_web::http::header;
 use actix_cors::Cors;
-use futures_util::future::{LocalBoxFuture, Ready, ready};
+use futures_util::future::{LocalBoxFuture, Ready, ready as fut_ready};
 use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -16,6 +16,12 @@ use tracing::{info, error};
 
 #[get("/api/health")]
 async fn health() -> HttpResponse {
+    HttpResponse::Ok().json(serde_json::json!({"status":"ok"}))
+}
+
+// compatibility endpoint expected by some healthcheck tooling
+#[get("/healthz")]
+async fn healthz() -> HttpResponse {
     HttpResponse::Ok().json(serde_json::json!({"status":"ok"}))
 }
 
@@ -46,7 +52,7 @@ where
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        ready(Ok(TimeoutMiddlewareService {
+        fut_ready(Ok(TimeoutMiddlewareService {
             service: Arc::new(service),
             timeout: self.timeout,
         }))
@@ -83,10 +89,9 @@ where
                 Ok(Ok(res)) => Ok(res),
                 Ok(Err(e)) => Err(e),
                 Err(_) => {
-                    let resp = HttpResponse::RequestTimeout()
-                        .insert_header((header::CONTENT_TYPE, "text/plain; charset=utf-8"))
-                        .body("request timeout");
-                    Err(actix_web::error::ErrorRequestTimeout(resp))
+                    // Return a request timeout error with a string message (ErrorRequestTimeout
+                    // expects a Display, not an HttpResponse).
+                    Err(actix_web::error::ErrorRequestTimeout("request timeout"))
                 }
             }
         })
@@ -99,7 +104,9 @@ async fn main() -> std::io::Result<()> {
     tracing_subscriber::fmt::init();
 
     let bind = env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
-    let allowed_origins = env::var("ALLOWED_ORIGINS").unwrap_or_else(|_| "http://localhost:5173".to_string());
+    // FRONT_ORIGIN is a comma-separated list of allowed origins for the frontend,
+    // default to the local static site host used in docker-compose during dev.
+    let allowed_origins = env::var("FRONT_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".to_string());
 
     info!(%bind, %allowed_origins, "Starting server");
 
@@ -116,27 +123,34 @@ async fn main() -> std::io::Result<()> {
         info!("startup complete, marking ready");
     }
 
-    // CORS setup from env
-    let mut cors = Cors::default()
-        .allowed_methods(vec!["GET", "POST", "OPTIONS"])
-        .max_age(3600);
-    for origin in allowed_origins.split(',') {
-        let o = origin.trim();
-        if !o.is_empty() {
-            cors = cors.allowed_origin(o);
-        }
-    }
+    // Note: build a fresh Cors per-app since Cors does not implement Clone
+    // allowed_origins is a String we captured into the closure below.
 
     // server builder
+    let allowed = allowed_origins.clone();
     let server = HttpServer::new(move || {
+        // build cors per-app
+        let mut cors = Cors::default()
+            .allowed_methods(vec!["GET", "POST", "OPTIONS"])
+            .allowed_headers(vec![header::CONTENT_TYPE, header::AUTHORIZATION, header::ACCEPT])
+            .supports_credentials()
+            .max_age(3600);
+        for origin in allowed.split(',') {
+            let o = origin.trim();
+            if !o.is_empty() {
+                cors = cors.allowed_origin(o);
+            }
+        }
+
         App::new()
             .wrap(middleware::Logger::default())
             .wrap(TimeoutMiddleware { timeout: Duration::from_secs(10) })
-            .wrap(cors.clone())
+            .wrap(cors)
             // limit JSON payloads to 10MB
             .app_data(aw_web::JsonConfig::default().limit(10 * 1024 * 1024))
             .app_data(ready_flag_data.clone())
             .service(health)
+            .service(healthz)
             .service(ready)
             .route(
                 "/api/ci/webhook/github",
@@ -145,9 +159,8 @@ async fn main() -> std::io::Result<()> {
     })
         .bind(bind.clone())?
         .keep_alive(Duration::from_secs(75))
-        .client_timeout(Duration::from_secs(30))
-        .client_shutdown(Duration::from_secs(5))
-        .run();
+        .shutdown_timeout(5)
+            .run();
 
     let srv_handle = server.handle();
     let server_fut = tokio::spawn(server);

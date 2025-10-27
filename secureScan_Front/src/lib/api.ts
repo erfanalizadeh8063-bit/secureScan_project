@@ -9,7 +9,12 @@ export type ApiScan = {
   [k: string]: any;
 };
 
-const BASE = ""; // use relative; Vite proxies /api to backend
+// Determine API base at build time via Vite env VITE_API_URL.
+// In development, leave it blank so Vite proxy (configured in vite.config.ts)
+// can forward `/api` to the local backend. In production the static site
+// must be built with VITE_API_URL set to the full backend origin.
+const VITE_API_URL = (import.meta as any).env?.VITE_API_URL ?? "";
+const BASE = VITE_API_URL && VITE_API_URL.length > 0 ? VITE_API_URL.replace(/\/$/, "") : "";
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -58,12 +63,8 @@ import { notify } from "@/components/Toast";
 
 export async function listScans() {
   try {
-    const r = await fetch("/api/scans", { headers: { Accept: "application/json" } });
-    if (!r.ok) {
-      notify("Failed to fetch scans.");
-      throw new Error("Bad status");
-    }
-    return await r.json();
+    // Use the shared Api client so base URL logic is consistent.
+    return await Api.listScans();
   } catch (e) {
     notify("Network error.");
     throw e;
