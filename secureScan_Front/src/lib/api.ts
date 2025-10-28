@@ -53,3 +53,6 @@ export async function listScans(): Promise<ApiScan[]> {
     throw e;
   }
 }
+
+// Re-export types from central types file for backwards compatibility
+export type { ApiScan, ScanItem } from "@/types/api";
