@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
+import { apiUrl } from "@/lib/api";
 
 export default function Healthz() {
   const [msg, setMsg] = useState("…loading");
   useEffect(() => {
-    fetch("/api/healthz")
+    fetch(apiUrl("/healthz"))
       .then(r => r.text())
       .then(setMsg)
       .catch(e => setMsg("error: " + String(e)));

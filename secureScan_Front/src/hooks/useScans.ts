@@ -1,6 +1,7 @@
 // src/hooks/useScans.ts
 import { useEffect, useState } from "react";
-import { listScans, type ScanItem } from "@/lib/api";
+import { listScans } from "@/lib/api";
+import { toScanItem, type ScanItem, type ApiScan } from "@/types/api";
 
 export function useScans(pollMs = 3000) {
   const [rows, setRows] = useState<ScanItem[]>([]);
@@ -13,9 +14,10 @@ export function useScans(pollMs = 3000) {
 
     const tick = async () => {
       try {
-        const data = await listScans();
+        const data: ApiScan[] = await listScans();
+        const normalized: ScanItem[] = (data || []).map(toScanItem);
         if (mounted) {
-          setRows(data);
+          setRows(normalized);
           setError(null);
           setLoading(false);
         }

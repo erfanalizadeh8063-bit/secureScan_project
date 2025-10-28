@@ -1,23 +1,16 @@
 // Simple API client (relative base to work with Vite proxy)
-export type ApiScan = {
-  id: string;
-  target_url?: string;
-  status: "queued" | "running" | "completed" | "failed" | "canceled" | string;
-  findings?: Array<any>;
-  created_at?: string | number | null;
-  finished_at?: string | number | null;
-  [k: string]: any;
-};
+import type { ApiScan, ScanItem } from "@/types/api";
 
-// Determine API base at build time via Vite env VITE_API_URL.
-// In development, leave it blank so Vite proxy (configured in vite.config.ts)
-// can forward `/api` to the local backend. In production the static site
-// must be built with VITE_API_URL set to the full backend origin.
-const VITE_API_URL = (import.meta as any).env?.VITE_API_URL ?? "";
-const BASE = VITE_API_URL && VITE_API_URL.length > 0 ? VITE_API_URL.replace(/\/$/, "") : "";
+// Centralized API base helper; export so other modules can use it
+export const API_BASE = (import.meta as any)?.env?.VITE_API_URL?.toString()?.replace(/\/+$/, "") || "";
+
+export function apiUrl(path: string) {
+  if (!path.startsWith("/")) path = `/${path}`;
+  return `${API_BASE}${path}`;
+}
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(apiUrl(path), {
     headers: { "Content-Type": "application/json" },
     ...init,
   });
@@ -49,19 +42,9 @@ export const Api = {
     }),
 };
 
-export type ScanItem = {
-  id: string;
-  target_url?: string;
-  status: "queued"|"running"|"completed"|"failed"|"canceled"|string;
-  findings?: any[];
-  created_at?: string;
-  finished_at?: string;
-};
-
-
 import { notify } from "@/components/Toast";
 
-export async function listScans() {
+export async function listScans(): Promise<ApiScan[]> {
   try {
     // Use the shared Api client so base URL logic is consistent.
     return await Api.listScans();
