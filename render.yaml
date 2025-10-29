@@ -2,21 +2,22 @@ services:
   - type: web
     name: securascan-back
     env: docker
+    plan: free
     dockerfilePath: ./secureScan_Back/Dockerfile.backend
     dockerContext: ./secureScan_Back
-    healthCheckPath: /healthz
     autoDeploy: true
+    healthCheckPath: /healthz
     envVars:
       - key: RUST_LOG
         value: info
-      # FRONT_ORIGIN will be set after frontend URL is known
+      - key: BIND_ADDR
+        value: 0.0.0.0:8080
 
   - type: static_site
   - type: web
     name: securascan-front
     env: docker
-    dockerfilePath: secureScan_Front/Dockerfile.frontend
-    dockerContext: secureScan_Front
+    plan: free
+    dockerfilePath: ./secureScan_Front/Dockerfile.frontend
+    dockerContext: ./secureScan_Front
     autoDeploy: true
-    # IMPORTANT: Set environment variable VITE_API_URL in Render (Environment tab).
-    # It will be available at build time and baked into the Vite bundle.

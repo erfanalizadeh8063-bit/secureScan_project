@@ -1,0 +1,14 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -f secureScan_Back/Dockerfile.backend secureScan_Back
+
+      - name: Build frontend image
+        run: docker build -f secureScan_Front/Dockerfile.frontend secureScan_Front --build-arg VITE_API_URL=http://localhost:8080

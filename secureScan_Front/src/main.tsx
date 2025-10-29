@@ -9,6 +9,7 @@ import Results from "./pages/Results";
 import History from "./pages/History";
 import Dashboard from "./pages/Dashboard";
 import ScanDetails from "./pages/ScanDetails";
+import Healthz from "./pages/Healthz";
 import { ToastProvider } from "@/components/Toast";
 
 const router = createBrowserRouter([
@@ -21,6 +22,7 @@ const router = createBrowserRouter([
       { path: "history", element: <History /> },
       { path: "dashboard", element: <Dashboard /> },
       { path: "dashboard/:id", element: <ScanDetails /> }, // details route
+  { path: "healthz", element: <Healthz /> },
       { path: "*", element: <Navigate to="/dashboard" replace /> }, // 404 fallback
     ],
   },

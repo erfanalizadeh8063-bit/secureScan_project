@@ -69,6 +69,22 @@ curl -i https://<your-backend-url>/healthz
 curl -I https://<your-static-site-url>
 ```
 
+## Local Smoke Test
+
+```bash
+docker compose --profile prod up -d --build
+
+curl -i http://localhost:8080/healthz           # backend OK
+# frontend (if running via docker run mapping):
+curl -i http://localhost:3000/healthz           # frontend smoke (maps host:3000 -> container:10000)
+curl -i http://localhost:3000/api/healthz       # frontend proxy to backend (if configured)
+
+# Alternative: build and run frontend image locally
+docker build -f secureScan_Front/Dockerfile.frontend secureScan_Front --tag secfront
+docker run -p 3000:10000 secfront
+curl -I http://localhost:3000/healthz
+```
+
 If anything fails, collect logs from Render (service dashboard) and check the build logs for the static site to confirm `VITE_API_URL` was set during build.
 
 ## Quick smoke guide — Frontend on Render (Docker Web)
