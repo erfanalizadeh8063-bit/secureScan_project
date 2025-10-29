@@ -11,4 +11,4 @@ jobs:
         run: docker build -f secureScan_Back/Dockerfile.backend secureScan_Back
 
       - name: Build frontend image
-        run: docker build -f secureScan_Front/Dockerfile.frontend secureScan_Front
+        run: docker build -f secureScan_Front/Dockerfile.frontend secureScan_Front --build-arg VITE_API_URL=http://localhost:8080
