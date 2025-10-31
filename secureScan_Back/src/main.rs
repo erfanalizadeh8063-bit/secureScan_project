@@ -2,7 +2,8 @@
 use actix_web::dev::{ServiceRequest, ServiceResponse, Transform};
 use actix_web::http::header;
 use actix_cors::Cors;
-use futures_util::future::{LocalBoxFuture, Ready, ready as fut_ready};
+use futures_util::future::LocalBoxFuture;
+use std::future::{ready as std_ready, Ready};
 use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -26,7 +27,7 @@ async fn healthz() -> HttpResponse {
 }
 
 #[get("/ready")]
-async fn ready(ready_flag: aw_web::Data<Arc<AtomicBool>>) -> HttpResponse {
+async fn readiness(ready_flag: aw_web::Data<Arc<AtomicBool>>) -> HttpResponse {
     if ready_flag.load(Ordering::SeqCst) {
         HttpResponse::Ok().json(serde_json::json!({"status":"ready"}))
     } else {
@@ -52,7 +53,8 @@ where
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        fut_ready(Ok(TimeoutMiddlewareService {
+        // use std::future::ready to construct the immediate future
+        std_ready(Ok(TimeoutMiddlewareService {
             service: Arc::new(service),
             timeout: self.timeout,
         }))
@@ -104,9 +106,10 @@ async fn main() -> std::io::Result<()> {
     tracing_subscriber::fmt::init();
 
     let bind = env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
-    // FRONT_ORIGIN is a comma-separated list of allowed origins for the frontend,
-    // default to the local static site host used in docker-compose during dev.
-    let allowed_origins = env::var("FRONT_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".to_string());
+    // ALLOWED_ORIGIN is the preferred env var; fall back to the production FRONT_ORIGIN
+    let allowed_origins = env::var("ALLOWED_ORIGIN")
+        .or_else(|_| env::var("FRONT_ORIGIN"))
+        .unwrap_or_else(|_| "https://securascan-front-dd57.onrender.com".to_string());
 
     info!(%bind, %allowed_origins, "Starting server");
 
@@ -131,10 +134,13 @@ async fn main() -> std::io::Result<()> {
     let server = HttpServer::new(move || {
         // build cors per-app
         let mut cors = Cors::default()
-            .allowed_methods(vec!["GET", "POST", "OPTIONS"])
-            .allowed_headers(vec![header::CONTENT_TYPE, header::AUTHORIZATION, header::ACCEPT])
+            .allowed_origin(&allowed)
+            .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+            .allowed_headers(vec![header::CONTENT_TYPE, header::AUTHORIZATION])
+            .expose_headers(vec![header::CONTENT_TYPE])
             .supports_credentials()
             .max_age(3600);
+        // if multiple origins provided (comma-separated), register each
         for origin in allowed.split(',') {
             let o = origin.trim();
             if !o.is_empty() {
@@ -151,7 +157,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(ready_flag_data.clone())
             .service(health)
             .service(healthz)
-            .service(ready)
+            .service(readiness)
             .route(
                 "/api/ci/webhook/github",
                 aw_web::post().to(|req: HttpRequest, body: aw_web::Bytes| async move { github_webhook(req, body).await }),

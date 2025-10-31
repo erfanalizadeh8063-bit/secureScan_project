@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 # --- Web framework ---
-actix-web = "4.5"
-actix-cors = "0.7"
+actix-web = "4"
+actix-cors = "0.6"
 
 # --- Serialization ---
 serde = { version = "1", features = ["derive"] }

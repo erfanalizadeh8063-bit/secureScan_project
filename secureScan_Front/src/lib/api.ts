@@ -2,7 +2,8 @@
 import type { ApiScan, ScanItem } from "@/types/api";
 
 // Centralized API base helper; export so other modules can use it
-export const API_BASE = (import.meta as any)?.env?.VITE_API_URL?.toString()?.replace(/\/+$/, "") || "";
+// prefer VITE_API_BASE; fallback to localhost backend for dev
+export const API_BASE = (import.meta as any)?.env?.VITE_API_BASE?.toString() ?? "http://localhost:8080";
 
 export function apiUrl(path: string) {
   if (!path.startsWith("/")) path = `/${path}`;
