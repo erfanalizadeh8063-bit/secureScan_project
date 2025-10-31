@@ -10,10 +10,11 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-# pass VITE_API_URL to Vite at build time
-ARG VITE_API_URL
-ENV VITE_API_URL=${VITE_API_URL}
+# pass VITE_API_BASE to Vite at build time (injection via Docker build-arg)
+ARG VITE_API_BASE
+ENV VITE_API_BASE=${VITE_API_BASE}
 
+# ensure build runs after ARG/ENV is set so Vite can read the value at build time
 RUN npm run build
 
 FROM node:20-alpine
