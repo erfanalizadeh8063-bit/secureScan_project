@@ -11,8 +11,13 @@ COPY package*.json ./
 RUN npm ci
 COPY . .
 # pass VITE_API_BASE to Vite at build time (injection via Docker build-arg)
-ARG VITE_API_BASE
+# Provide a safe default so local/regional render builds have a sensible backend URL.
+# This default can be overridden by specifying --build-arg VITE_API_BASE=... during docker build
+ARG VITE_API_BASE=https://securascan-back-dd57.onrender.com
 ENV VITE_API_BASE=${VITE_API_BASE}
+
+# (debug) print the value during the build to help diagnose build-time injection issues
+RUN echo ">>> VITE_API_BASE during build = ${VITE_API_BASE}"
 
 # ensure build runs after ARG/ENV is set so Vite can read the value at build time
 RUN npm run build
