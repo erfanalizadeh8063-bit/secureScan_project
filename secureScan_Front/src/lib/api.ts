@@ -2,8 +2,17 @@
 import type { ApiScan, ScanItem } from "@/types/api";
 
 // Centralized API base helper; export so other modules can use it
-// prefer VITE_API_BASE; fallback to localhost backend for dev
-export const API_BASE = (import.meta as any)?.env?.VITE_API_BASE?.toString() ?? "http://localhost:8080";
+// prefer VITE_API_BASE; require build to provide it (avoid baking localhost into prod bundles)
+export const API_BASE = (import.meta as any)?.env?.VITE_API_BASE?.toString() ?? "";
+
+// Fail loudly in production if the build did not provide VITE_API_BASE.
+if (!API_BASE) {
+  const msg = "VITE_API_BASE is missing — set it at build-time.";
+  if ((import.meta as any).env?.PROD) throw new Error(msg);
+  // In dev, warn so local iteration still works when developers forget to set it.
+  // eslint-disable-next-line no-console
+  console.warn(msg);
+}
 
 export function apiUrl(path: string) {
   if (!path.startsWith("/")) path = `/${path}`;
