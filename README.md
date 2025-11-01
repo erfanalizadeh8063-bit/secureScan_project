@@ -50,7 +50,7 @@ Quick instructions:
 
 What the workflow does:
 - Builds backend and frontend locally in CI (via `.github/workflows/build.yml`).
-- On deploy (`.github/workflows/deploy-render.yml`) it queries Render for service URLs, sets `VITE_API_URL` for the frontend, triggers frontend redeploy, then sets `FRONT_ORIGIN` for backend and triggers backend redeploy. It waits for backend `/healthz` and frontend root to return healthy responses.
+- On deploy (`.github/workflows/deploy-render.yml`) it queries Render for service URLs, sets `VITE_API_BASE` for the frontend, triggers frontend redeploy, then sets `FRONT_ORIGIN` for backend and triggers backend redeploy. It waits for backend `/healthz` and frontend root to return healthy responses.
 
 Notes & troubleshooting:
 - Do not hard-code secrets in this repo. Add them as GitHub repo secrets as described above.
@@ -58,8 +58,8 @@ Notes & troubleshooting:
  
 Frontend (Render static site) notes:
 
-- The frontend is deployed as a Render Static Site and must be built with the environment variable `VITE_API_URL` set to your backend public URL (for example `https://securascan-back.onrender.com`).
-- After you set `VITE_API_URL` in the Render Static Site Environment, click "Clear build cache & Redeploy" in the Render UI so the build picks up the env (Vite inlines env variables at build time).
+ - The frontend is deployed as a Render Static Site and must be built with the environment variable `VITE_API_BASE` set to your backend public URL (for example `https://securascan-back.onrender.com`).
+ - After you set `VITE_API_BASE` in the Render Static Site Environment, click "Clear build cache & Redeploy" in the Render UI so the build picks up the env (Vite inlines env variables at build time).
 
 If you prefer to deploy the frontend as a Docker service with nginx, you must set `BACKEND_ORIGIN` on the frontend service and ensure nginx templates the upstream (see `secureScan_Front/nginx.conf.template` if present).
 ## Windows ports note
@@ -95,3 +95,16 @@ REM Inspect frontend files inside the container
 docker compose exec frontend sh -lc "ls -1 /usr/share/nginx/html | head -5"
 ```
 
+
+## Render Deploy — Frontend (Docker Web)
+
+When deploying the frontend as a Docker Web service on Render, follow these steps:
+
+- In the Render service settings for `securascan-front` set the build-time environment variable:
+  - `VITE_API_BASE = https://securascan-back-dd57.onrender.com`
+- Click **Clear build cache** in the Render UI to force a fresh build that picks up the build-time env.
+- Click **Deploy Latest** to start the build & deploy.
+- After deploy: open the site, then DevTools → Network and confirm API calls go to `https://securascan-back-dd57.onrender.com` and the console shows no CORS errors.
+- Run `./secureScan_Front/smoke.sh` (or use the GitHub Actions smoke workflow) and capture the output in the deployment report.
+
+Note: For static sites built with Vite, the `VITE_*` env variables must be provided at build time; Render's runtime env will not be inlined into JS bundles built earlier.

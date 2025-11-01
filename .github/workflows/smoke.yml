@@ -1,0 +1,36 @@
+name: smoke-check
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Backend health check
+        id: backend
+        run: |
+          set -euo pipefail
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 https://securascan-back-dd57.onrender.com/healthz || echo "ERR")
+          echo "backend_code=$code" >> $GITHUB_OUTPUT
+          if [ "$code" != "200" ]; then
+            echo "Backend healthcheck failed (HTTP $code)" >&2
+            exit 1
+          fi
+
+      - name: Frontend HEAD check
+        id: frontend
+        run: |
+          set -euo pipefail
+          code=$(curl -sSI -o /dev/null -w "%{http_code}" --max-time 10 https://securascan-front-dd57.onrender.com || echo "ERR")
+          echo "frontend_code=$code" >> $GITHUB_OUTPUT
+          if [[ "$code" != "200" && "$code" != "301" && "$code" != "302" ]]; then
+            echo "Frontend HEAD check failed (HTTP $code)" >&2
+            exit 1
+          fi
+
+      - name: Report
+        run: |
+          echo "SMOKE result: backend=${{ steps.backend.outputs.backend_code }} frontend=${{ steps.frontend.outputs.frontend_code }}"

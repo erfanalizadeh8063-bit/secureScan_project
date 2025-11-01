@@ -1,32 +1,31 @@
 ####
 # Dockerfile.frontend
 # This Dockerfile builds the Vite React app and serves the built `dist` using `serve`.
-# IMPORTANT: Set environment variable VITE_API_URL in Render (Environment tab).
+# IMPORTANT: Set environment variable VITE_API_BASE in Render (Environment tab).
 # It will be available at build time and baked into the Vite bundle.
 ####
 
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund
 COPY . .
-# pass VITE_API_BASE to Vite at build time (injection via Docker build-arg)
-# Provide a safe default so local/regional render builds have a sensible backend URL.
-# This default can be overridden by specifying --build-arg VITE_API_BASE=... during docker build
+
+# Build-time argument injected into Vite. Must be set when building (e.g. --build-arg VITE_API_BASE=...)
 ARG VITE_API_BASE=https://securascan-back-dd57.onrender.com
 ENV VITE_API_BASE=${VITE_API_BASE}
-
-# (debug) print the value during the build to help diagnose build-time injection issues
-RUN echo ">>> VITE_API_BASE during build = ${VITE_API_BASE}"
 
 # ensure build runs after ARG/ENV is set so Vite can read the value at build time
 RUN npm run build
 
-FROM node:20-alpine
-WORKDIR /app
-RUN npm i -g serve
-COPY --from=build /app/dist ./dist
-ENV PORT=10000
-EXPOSE 10000
-CMD ["sh", "-c", "serve -s dist -l ${PORT}"]
+# Runtime: use nginx to serve static files and listen on $PORT (envsubstituted)
+FROM nginx:alpine AS runtime
+RUN apk add --no-cache gettext
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
+
+# Use envsubst at container start to write nginx config that listens on $PORT
+ENV PORT=8080
+EXPOSE 8080
+CMD ["/bin/sh", "-c", "envsubst '${PORT}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
 
