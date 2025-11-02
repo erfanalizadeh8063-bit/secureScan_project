@@ -23,4 +23,7 @@ server {
   add_header X-Frame-Options "DENY" always;
   add_header X-Content-Type-Options "nosniff" always;
   add_header Referrer-Policy "no-referrer-when-downgrade" always;
+  add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+  # Minimal Content Security Policy - allow connecting to the backend origin for API calls
+  add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://securascan-back-dd57.onrender.com" always;
 }

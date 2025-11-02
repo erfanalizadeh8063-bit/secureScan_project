@@ -108,3 +108,10 @@ When deploying the frontend as a Docker Web service on Render, follow these step
 - Run `./secureScan_Front/smoke.sh` (or use the GitHub Actions smoke workflow) and capture the output in the deployment report.
 
 Note: For static sites built with Vite, the `VITE_*` env variables must be provided at build time; Render's runtime env will not be inlined into JS bundles built earlier.
+
+## Beta Ops — How we verify builds & report bugs
+
+- Build verification: the `bundle-check` workflow builds the frontend with `VITE_API_BASE` set and fails if the built `dist` does not contain the backend URL.
+- Smoke checks: `secureScan_Front/smoke.sh` provides a one-line smoke result used by CI and manual testing.
+- Security: nginx templates include security headers (HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy). Backend enforces a 5MB JSON request size limit. Tune timeouts in `secureScan_Back/src/main.rs` (TimeoutMiddleware and keep_alive).
+- Reporting: use the bug report template at `.github/ISSUE_TEMPLATE/bug_report.md` when filing production issues. Include logs, curls, screenshots, and the smoke output.

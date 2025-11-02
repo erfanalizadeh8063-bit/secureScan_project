@@ -1,0 +1,14 @@
+name: ci-ping
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+jobs:
+  ci-ping:
+    name: ci-ping
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping
+        run: echo "ping"
