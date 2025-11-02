@@ -1,0 +1,38 @@
+name: bundle-check
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  bundle-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build frontend with VITE_API_BASE
+        working-directory: secureScan_Front
+        env:
+          VITE_API_BASE: https://securascan-back-dd57.onrender.com
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Verify backend URL baked into bundles
+        working-directory: secureScan_Front
+        run: |
+          set -e
+          if ! grep -R "https://securascan-back-dd57.onrender.com" dist || [ $(grep -R "https://securascan-back-dd57.onrender.com" -R dist | wc -l) -lt 1 ]; then
+            echo "ERROR: backend URL not found in built bundles" >&2
+            exit 1
+          fi
+
+      - name: Container scan (TODO)
+        run: |
+          echo "TODO: integrate Trivy or other container scanner here"

@@ -127,33 +127,36 @@ async fn main() -> std::io::Result<()> {
     }
 
     // Note: build a fresh Cors per-app since Cors does not implement Clone
-    // allowed_origins is a String we captured into the closure below.
-
-    // server builder
+    // Parse allowed origins (comma-separated) and register each explicitly.
     let allowed = allowed_origins.clone();
     let server = HttpServer::new(move || {
-        // build cors per-app
+        // Normalize and split origins; remove empty entries and trim whitespace.
+        let origins: Vec<&str> = allowed
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        // build cors per-app and register each allowed origin explicitly
         let mut cors = Cors::default()
-            .allowed_origin(&allowed)
             .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
             .allowed_headers(vec![header::CONTENT_TYPE, header::AUTHORIZATION])
             .expose_headers(vec![header::CONTENT_TYPE])
             .supports_credentials()
             .max_age(3600);
-        // if multiple origins provided (comma-separated), register each
-        for origin in allowed.split(',') {
-            let o = origin.trim();
-            if !o.is_empty() {
-                cors = cors.allowed_origin(o);
-            }
+
+        for o in origins.iter() {
+            cors = cors.allowed_origin(o);
         }
 
         App::new()
             .wrap(middleware::Logger::default())
+            // Request timeout middleware: adjust Duration::from_secs(...) to tune request timeout.
+            // For production, consider reading this value from an env var like REQUEST_TIMEOUT_SECS.
             .wrap(TimeoutMiddleware { timeout: Duration::from_secs(10) })
             .wrap(cors)
-            // limit JSON payloads to 10MB
-            .app_data(aw_web::JsonConfig::default().limit(10 * 1024 * 1024))
+            // limit JSON payloads to 5MB (protects against large body DoS)
+            .app_data(aw_web::JsonConfig::default().limit(5 * 1024 * 1024))
             .app_data(ready_flag_data.clone())
             .service(health)
             .service(healthz)
