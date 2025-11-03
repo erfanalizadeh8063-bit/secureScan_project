@@ -31,8 +31,8 @@ on:
 
           - name: Run gitleaks (secret scan)
             uses: gitleaks/gitleaks-action@v2
-            with:
-              args: '--verbose'
+            env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
           - name: Install cargo-audit
             run: cargo install cargo-audit || true
@@ -212,6 +212,7 @@ on:
     branches: [ main, 'feature/**', 'ci/**' ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   security:
@@ -372,8 +373,8 @@ jobs:
 
       - name: Run gitleaks (secret scan)
         uses: gitleaks/gitleaks-action@v2
-        with:
-          args: '--verbose'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cargo-audit
         run: cargo install cargo-audit || true
@@ -512,8 +513,8 @@ jobs:
 
       - name: Run gitleaks (secret scan)
         uses: gitleaks/gitleaks-action@v2
-        with:
-          args: '--verbose'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cargo-audit
         run: cargo install cargo-audit || true
@@ -649,21 +650,17 @@ jobs:    runs-on: ubuntu-latest
 
     steps:
 
-      - uses: actions/checkout@v4      - name: Run gitleaks (secret scan)
 
+      - uses: actions/checkout@v4
+
+      - name: Run gitleaks (secret scan)
         uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run gitleaks        with:
-
-        uses: gitleaks/gitleaks-action@v2          args: '--verbose'
-
-
-
-      - name: Install cargo-audit      - name: Install cargo-audit
-
-        run: cargo install cargo-audit        run: |
-
-        shell: bash          cargo install cargo-audit || true
+      - name: Install cargo-audit
+        run: |
+          cargo install cargo-audit || true
 
 
 
