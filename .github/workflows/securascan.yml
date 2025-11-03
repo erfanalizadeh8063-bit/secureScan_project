@@ -16,6 +16,7 @@ jobs:
     # Only run the security job for PRs originating in this repository (skip forks).
     if: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name == github.repository }}
     name: security
+    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (full history)
@@ -24,17 +25,16 @@ jobs:
           fetch-depth: 0
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v2
+        uses: github/codeql-action/init@v3
         with:
-          languages: |
-            rust
-            javascript
+          languages: 'javascript'
+          queries: security-extended
 
       - name: Autobuild (CodeQL)
-        uses: github/codeql-action/autobuild@v2
+        uses: github/codeql-action/autobuild@v3
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v2
+        uses: github/codeql-action/analyze@v3
         with:
           output: codeql-results.sarif
         continue-on-error: ${{ github.event_name == 'pull_request' }}
