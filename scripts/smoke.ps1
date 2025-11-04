@@ -16,7 +16,7 @@ Write-Host "Bringing down any existing compose stack..." -ForegroundColor Yellow
 try { & docker compose down --remove-orphans } catch { }
 
 Write-Host "Building backend (no-cache)..." -ForegroundColor Yellow
-& docker compose build --no-cache --progress=plain securascan-back
+& docker compose build --no-cache --progress=plain backend
 
 Write-Host "Starting prod profile..." -ForegroundColor Yellow
 & docker compose --profile prod up -d
@@ -32,7 +32,7 @@ try {
 if ($hc -ne 200) {
   Write-Host "Backend health failed: $hc" -ForegroundColor Red
   Write-Host "--- Backend logs ---" -ForegroundColor Yellow
-  try { & docker compose logs securascan-back --tail=200 } catch { }
+  try { & docker compose logs backend --tail=200 } catch { }
   exit 2
 }
 Write-Host "Backend healthy" -ForegroundColor Green
@@ -47,7 +47,7 @@ try {
 if ($code -ne 200 -and $code -ne 304) {
   Write-Host "Frontend check failed: $code" -ForegroundColor Red
   Write-Host "--- Frontend logs ---" -ForegroundColor Yellow
-  try { & docker compose logs securascan-front --tail=200 } catch { }
+  try { & docker compose logs frontend --tail=200 } catch { }
   exit 3
 }
 Write-Host "Frontend served (status: $code)" -ForegroundColor Green

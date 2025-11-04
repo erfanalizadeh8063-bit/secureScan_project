@@ -14,5 +14,5 @@ BACK_URL="https://your-back.onrender.com" \
 The script will call `/healthz` on both services and print the responses. It exits non-zero if either endpoint fails.
 
 Notes:
-- Ensure `VITE_API_URL` is set in the frontend service on Render before triggering the build, so the frontend bundle knows the backend origin.
+ - Ensure `VITE_API_BASE` is set in the frontend service on Render before triggering the build, so the frontend bundle knows the backend origin.
 - The script requires `curl` and `sed` available on your machine (common on macOS/Linux and Windows WSL).

@@ -77,7 +77,7 @@ jobs:
           sed -i 's:/*$::' frontend_url.txt || true
           echo "Frontend URL: $(cat frontend_url.txt || echo '')"
 
-      - name: Upsert frontend env VITE_API_URL (→ backend)
+      - name: Upsert frontend env VITE_API_BASE (→ backend)
         env:
           BASE: ${{ steps.norm.outputs.BASE }}
           FRONT: ${{ steps.norm.outputs.FRONT }}
@@ -86,10 +86,10 @@ jobs:
           KEY="${{ secrets.RENDER_API_KEY }}"
           BACK_URL="$(cat backend_url.txt || true)"
           if [ -z "$BACK_URL" ]; then
-            echo "⚠️ Backend URL not detected; skipping VITE_API_URL update"
+            echo "⚠️ Backend URL not detected; skipping VITE_API_BASE update"
             exit 0
           fi
-          BODY="$(jq -nc --arg k VITE_API_URL --arg v "$BACK_URL" '{key:$k, value:$v, scope:"env"}')"
+          BODY="$(jq -nc --arg k VITE_API_BASE --arg v "$BACK_URL" '{key:$k, value:$v, scope:"env"}')"
           # POST (create) → if fails, PUT (update)
           curl -sS -X POST -H "Accept: application/json" -H "Content-Type: application/json" \
                -H "Authorization: Bearer $KEY" \

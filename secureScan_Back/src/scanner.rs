@@ -38,7 +38,8 @@ pub async fn scan_target(target: &str) -> Result<ScanResult> {
     let headers = resp
         .headers()
         .iter()
-        .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+        // normalize header names to lowercase so lookups are reliable
+        .map(|(k, v)| (k.as_str().to_lowercase(), v.to_str().unwrap_or("").to_string()))
         .collect::<HashMap<_, _>>();
 
     let body = resp.text().await.unwrap_or_default();

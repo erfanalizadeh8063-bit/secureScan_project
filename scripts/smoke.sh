@@ -10,7 +10,7 @@ echo "Bringing down any existing compose stack..."
 docker compose down --remove-orphans || true
 
 echo "Building backend image (no-cache)..."
-docker compose build --no-cache --progress=plain securascan-back
+docker compose build --no-cache --progress=plain backend
 
 echo "Starting prod profile..."
 docker compose --profile prod up -d
@@ -23,7 +23,7 @@ HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/healthz || e
 if [ "$HTTP" != "200" ]; then
   echo "Backend health check failed (status: $HTTP)"
   echo "--- Backend logs ---"
-  docker compose logs securascan-back --tail=200
+  docker compose logs backend --tail=200
   exit 2
 fi
 
@@ -34,7 +34,7 @@ HTTPF=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 || echo "00
 if [ "$HTTPF" != "200" ] && [ "$HTTPF" != "304" ]; then
   echo "Frontend check failed (status: $HTTPF)"
   echo "--- Frontend logs ---"
-  docker compose logs securascan-front --tail=200
+  docker compose logs frontend --tail=200
   exit 3
 fi
 
