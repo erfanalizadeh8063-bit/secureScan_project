@@ -2,37 +2,66 @@ name: bundle-check
 
 on:
   pull_request:
-    branches: [ main ]
+  push:
   workflow_dispatch:
 
 jobs:
   bundle-check:
+    name: bundle-check
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20]
     steps:
       - uses: actions/checkout@v4
 
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node-version }}
 
-      - name: Build frontend with VITE_API_BASE
+      - name: Cache npm and node_modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            secureScan_Front/node_modules
+            ~/.npm
+          key: ${{ runner.os }}-node-${{ matrix.node-version }}-${{ hashFiles('secureScan_Front/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ matrix.node-version }}-
+
+      - name: Install & build frontend
         working-directory: secureScan_Front
         env:
-          VITE_API_BASE: https://securascan-back-dd57.onrender.com
+          VITE_API_BASE: ${{ secrets.BUNDLE_CHECK_BACKEND_URL }}
         run: |
           npm ci --no-audit --no-fund
-          npm run build
+          VITE_API_BASE="$VITE_API_BASE" npm run build
 
-      - name: Verify backend URL baked into bundles
+      - name: Verify dist contains backend URL (secret redacted)
         working-directory: secureScan_Front
+        env:
+          BACKEND_URL: ${{ secrets.BUNDLE_CHECK_BACKEND_URL }}
         run: |
-          set -e
-          if ! grep -R "https://securascan-back-dd57.onrender.com" dist || [ $(grep -R "https://securascan-back-dd57.onrender.com" -R dist | wc -l) -lt 1 ]; then
-            echo "ERROR: backend URL not found in built bundles" >&2
+          set -euo pipefail
+          # Only echo scheme+host when showing which URL we look for
+          REDACTED=$(echo "$BACKEND_URL" | sed -E 's|(https?://[^/]+).*|\1|')
+          echo "Checking for backend URL in dist: ${REDACTED}"
+          if ! grep -R --fixed-strings --quiet "$BACKEND_URL" dist; then
+            echo "ERROR: backend URL not found in 'dist'" >&2
+            ls -la dist || true
+            echo "--- sample built files (first 10 lines each; secret redacted) ---" >&2
+            for f in $(find dist -type f -name '*.js' -o -name '*.html' | head -n 10); do
+              echo "---- $f ----" >&2
+              sed -n '1,10p' "$f" | sed -E "s|${BACKEND_URL}|[REDACTED_BACKEND_URL]|g" >&2 || true
+            done
             exit 1
           fi
+          echo "Backend URL found in built bundles. (host: ${REDACTED})"
 
-      - name: Container scan (TODO)
-        run: |
-          echo "TODO: integrate Trivy or other container scanner here"
+      - name: Upload dist on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-dist-${{ github.run_id }}
+          path: secureScan_Front/dist

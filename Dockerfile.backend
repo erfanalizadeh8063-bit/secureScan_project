@@ -9,10 +9,18 @@ RUN cargo build --release
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
+# Create a non-root user for runtime
+RUN groupadd -r app && useradd -r -g app app || true
+
 # Copy release binary and start script
 COPY --from=builder /app/target/release/securascan-backend /app/app
 COPY start.sh /start.sh
 RUN sed -i 's/\r$//' /start.sh && chmod +x /start.sh
+
+# Ensure ownership and drop privileges for runtime
+RUN chown -R app:app /app /start.sh || true
+USER app
+
 EXPOSE 8080
 # Use start.sh which reads $PORT and executes /app/app
 CMD ["/start.sh"]

@@ -19,7 +19,7 @@ This checklist documents the manual steps to configure Render and GitHub to depl
    - From Actions, run `Deploy → Render` (workflow_dispatch) or push to `main`.
 
 5) After first deploy
-   - The workflow will attempt to set `VITE_API_URL` on the frontend to the backend public URL and trigger a frontend deploy (clear cache).
+   - The workflow will attempt to set `VITE_API_BASE` on the frontend to the backend public URL and trigger a frontend deploy (clear cache).
    - It then sets `FRONT_ORIGIN` on the backend to the frontend URL and triggers a backend deploy.
 
 6) Verification
@@ -51,8 +51,8 @@ This document lists the Render deployment configuration and post-deploy verifica
    - `FRONT_ORIGIN` = `https://<your-static-site-url>`
      - Purpose: restrict CORS to the static site's origin.
 2. Frontend (Render static site environment):
-   - `VITE_API_URL` = `https://<your-backend-url>`
-     - Note: Vite inlines env variables at build time. After setting `VITE_API_URL`, "Clear build cache & Redeploy" the static site so the new value is baked into the built assets.
+    - `VITE_API_BASE` = `https://<your-backend-url>`
+       - Note: Vite inlines env variables at build time. After setting `VITE_API_BASE`, "Clear build cache & Redeploy" the static site so the new value is baked into the built assets.
 
 ## Final verification steps (after envs are set and redeploy complete)
 1. Open the static site URL in a browser: `https://<your-static-site-url>`
@@ -85,11 +85,21 @@ docker run -p 3000:10000 secfront
 curl -I http://localhost:3000/healthz
 ```
 
-If anything fails, collect logs from Render (service dashboard) and check the build logs for the static site to confirm `VITE_API_URL` was set during build.
+If anything fails, collect logs from Render (service dashboard) and check the build logs for the static site to confirm `VITE_API_BASE` was set during build.
 
 ## Quick smoke guide — Frontend on Render (Docker Web)
 
-- In Render → select the frontend service `securascan-front` → Environment (tab): set
-   `VITE_API_URL=https://<your-backend-url>`
-- Trigger a deploy (or Clear build cache & Redeploy) so the Vite build picks up `VITE_API_URL` at build time.
+ - In Render → select the frontend service `securascan-front` → Environment (tab): set
+   `VITE_API_BASE=https://<your-backend-url>`
+ - Trigger a deploy (or Clear build cache & Redeploy) so the Vite build picks up `VITE_API_BASE` at build time.
 - Verify root `/` returns HTTP 200 (or 304). If you see 502, check the service logs and ensure the container is binding to the port provided by Render (Render exposes $PORT to the container). The Dockerfile uses `serve -s dist -l ${PORT}` which binds to the provided port.
+
+### Windows PowerShell local smoke helpers
+
+I added PowerShell helper scripts under `scripts/windows/` to simplify local testing on Windows.
+
+- `scripts/windows/run_backend.ps1` — run the backend image (`sec-back-test`) on a given port (default 8080).
+- `scripts/windows/run_frontend.ps1` — run the frontend image (`sec-front-test`) mapping host port 3000 → container 10000.
+- `scripts/windows/smoke_local.ps1` — checks backend `/healthz` and frontend static `/__ping.txt` if present (use a browser to validate SPA JS routes).
+
+See `docs/frontend_powershell.md` for a short usage example.

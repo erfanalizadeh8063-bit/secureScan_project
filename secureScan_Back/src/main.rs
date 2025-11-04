@@ -137,16 +137,27 @@ async fn main() -> std::io::Result<()> {
             .filter(|s| !s.is_empty())
             .collect();
 
-        // build cors per-app and register each allowed origin explicitly
+        // build cors per-app
+        // Policy: allow only the first configured origin (production frontend), restrict methods to safe verbs,
+        // do not allow credentials, and only allow necessary headers.
         let mut cors = Cors::default()
-            .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-            .allowed_headers(vec![header::CONTENT_TYPE, header::AUTHORIZATION])
+            .allowed_methods(vec!["GET", "POST", "OPTIONS"])
+            .allowed_headers(vec![header::CONTENT_TYPE, header::AUTHORIZATION, header::ACCEPT])
             .expose_headers(vec![header::CONTENT_TYPE])
-            .supports_credentials()
-            .max_age(3600);
+            // Do not support credentials by default for stricter CORS policy
+            //.supports_credentials()
+            .max_age(600);
 
-        for o in origins.iter() {
-            cors = cors.allowed_origin(o);
+        // Prefer a single origin; if multiple are provided, use the first and log a warning.
+        if origins.is_empty() {
+            // fallback to a conservative default if nothing present
+            cors = cors.allowed_origin("https://securascan-front-dd57.onrender.com");
+        } else {
+            if origins.len() > 1 {
+                // avoid spamming logs in tight loops; just one informational message
+                info!(allowed = origins.join(","), "Multiple allowed origins detected; using the first origin only for CORS");
+            }
+            cors = cors.allowed_origin(origins[0]);
         }
 
         App::new()

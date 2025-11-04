@@ -15,7 +15,7 @@ How to test locally
 
 ```bash
 docker build -f secureScan_Back/Dockerfile.backend secureScan_Back --tag sec-back-test
-docker build -f secureScan_Front/Dockerfile.frontend secureScan_Front --build-arg VITE_API_URL=https://example.com --tag sec-front-test
+docker build -f secureScan_Front/Dockerfile.frontend secureScan_Front --build-arg VITE_API_BASE=https://example.com --tag sec-front-test
 ```
 
 2. Run frontend (map host port 3000 to container 10000):
@@ -27,8 +27,8 @@ curl -I http://localhost:3000/healthz
 
 How to deploy on Render
 -----------------------
-1. In Render → Frontend service → Environment: set `VITE_API_URL=https://<your-backend-url>` (build-time env).
-2. Trigger deploy (Clear build cache & Redeploy if changing VITE_API_URL).
+1. In Render → Frontend service → Environment: set `VITE_API_BASE=https://<your-backend-url>` (build-time env).
+2. Trigger deploy (Clear build cache & Redeploy after changing `VITE_API_BASE`).
 3. Run the smoke script:
 
 ```bash
