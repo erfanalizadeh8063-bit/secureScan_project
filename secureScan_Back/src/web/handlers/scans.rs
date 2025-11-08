@@ -12,11 +12,13 @@ pub async fn list_scans(service: web::Data<ScanService>) -> Result<impl Responde
     Ok(HttpResponse::Ok().json(items))
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize)]
 pub struct StartScanReq {
     pub target_url: String,
 }
 
+#[allow(dead_code)]
 #[derive(Serialize)]
 pub struct StartScanRes {
     pub scan_id: Uuid,

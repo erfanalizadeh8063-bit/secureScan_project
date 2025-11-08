@@ -3,11 +3,17 @@ import type { ApiScan, ScanItem } from "@/types/api";
 
 // Centralized API base helper; export so other modules can use it
 // prefer VITE_API_BASE; require build to provide it (avoid baking localhost into prod bundles)
-export const API_BASE = (import.meta as any)?.env?.VITE_API_BASE?.toString() ?? "";
+// Prefer VITE_API_BASE (baked at build time). If not present, allow a runtime
+// override via window.__CONFIG__.API_BASE which can be injected by the hosting
+// layer (nginx envsubst). This makes static bundles more flexible for container
+// deployments where you can inject the backend origin at container start.
+const baked = (import.meta as any)?.env?.VITE_API_BASE?.toString();
+const runtime = (globalThis as any)?.__CONFIG__?.API_BASE;
+export const API_BASE = baked || runtime || "";
 
-// Fail loudly in production if the build did not provide VITE_API_BASE.
+// Fail loudly in production if neither build-time nor runtime config exists.
 if (!API_BASE) {
-  const msg = "VITE_API_BASE is missing — set it at build-time.";
+  const msg = "VITE_API_BASE is missing — set it at build-time or provide window.__CONFIG__.API_BASE at runtime.";
   if ((import.meta as any).env?.PROD) throw new Error(msg);
   // In dev, warn so local iteration still works when developers forget to set it.
   // eslint-disable-next-line no-console

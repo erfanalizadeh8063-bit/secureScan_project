@@ -1,4 +1,6 @@
-﻿use actix_web::{get, App, HttpRequest, HttpResponse, HttpServer, middleware, web as aw_web};
+﻿#![allow(dead_code)]
+
+use actix_web::{get, App, HttpRequest, HttpResponse, HttpServer, middleware, web as aw_web};
 use actix_web::dev::{ServiceRequest, ServiceResponse, Transform};
 use actix_web::http::header;
 use actix_cors::Cors;
@@ -179,7 +181,8 @@ async fn main() -> std::io::Result<()> {
         // wait for ctrl-c or termination
         let _ = tokio::signal::ctrl_c().await;
         info!("shutdown signal received, stopping server");
-        srv_handle.stop(true);
+        // `stop` returns a future; await it to ensure the stop request is executed
+        let _ = srv_handle.stop(true).await;
     });
 
     // wait for server to finish
@@ -190,11 +193,12 @@ async fn main() -> std::io::Result<()> {
         }
         Ok(Err(e)) => {
             error!(%e, "server error");
-            Err(std::io::Error::new(std::io::ErrorKind::Other, format!("server error: {}", e)))
+            // use std::io::Error::other as suggested by clippy
+            Err(std::io::Error::other(format!("server error: {}", e)))
         }
         Err(e) => {
             error!(%e, "server task join error");
-            Err(std::io::Error::new(std::io::ErrorKind::Other, format!("join error: {}", e)))
+            Err(std::io::Error::other(format!("join error: {}", e)))
         }
     }
 }

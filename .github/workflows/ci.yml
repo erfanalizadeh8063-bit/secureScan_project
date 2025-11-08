@@ -59,4 +59,5 @@ jobs:
         run: docker build -f secureScan_Back/Dockerfile.backend secureScan_Back
 
       - name: Build frontend image
-        run: docker build -f secureScan_Front/Dockerfile.frontend secureScan_Front --build-arg VITE_API_URL=http://localhost:8080
+        # Use VITE_API_BASE (matches frontend code). For local CI images we set a localhost backend.
+        run: docker build -f secureScan_Front/Dockerfile.frontend secureScan_Front --build-arg VITE_API_BASE=http://localhost:8080

@@ -6,6 +6,7 @@ use std::sync::{Arc, RwLock};
 use url::Url;
 use uuid::Uuid;
 
+#[allow(dead_code)]
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum ScanStatus {
@@ -16,6 +17,7 @@ pub enum ScanStatus {
     Canceled,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]
 pub struct Finding {
     pub r#type: String,
@@ -25,6 +27,7 @@ pub struct Finding {
     pub location: String,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ScanRecord {
     pub id: Uuid,
@@ -35,12 +38,14 @@ pub struct ScanRecord {
     pub finished_at: Option<DateTime<Utc>>,
 }
 
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct ScanService {
     state: Arc<RwLock<HashMap<Uuid, ScanRecord>>>,
     queue: ScanQueue,
 }
 
+#[allow(dead_code)]
 impl ScanService {
     pub fn new(queue: ScanQueue) -> Self {
         Self {

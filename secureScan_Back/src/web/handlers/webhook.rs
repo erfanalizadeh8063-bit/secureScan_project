@@ -1,4 +1,4 @@
-use actix_web::{http::header, HttpRequest, HttpResponse};
+use actix_web::{HttpRequest, HttpResponse};
 use actix_web::web::Bytes;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;

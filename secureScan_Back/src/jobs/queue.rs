@@ -7,6 +7,7 @@ use crate::domain::scan_service::{ScanService, ScanStatus, Finding as ApiFinding
 use crate::scanner;
 
 /// Represents a single scan job.
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct ScanJob {
     pub id: Uuid,
@@ -14,11 +15,13 @@ pub struct ScanJob {
 }
 
 /// Thin wrapper around an mpsc sender to enqueue jobs.
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct ScanQueue {
     tx: mpsc::Sender<ScanJob>,
 }
 
+#[allow(dead_code)]
 impl ScanQueue {
     pub fn new(tx: mpsc::Sender<ScanJob>) -> Self {
         Self { tx }
@@ -32,6 +35,7 @@ impl ScanQueue {
 
 /// Starts worker dispatcher that receives jobs and processes them concurrently.
 /// This function spawns its own background task and returns immediately.
+#[allow(dead_code)]
 pub fn start_workers(service: ScanService, mut rx: mpsc::Receiver<ScanJob>, concurrency: usize) {
     let service = Arc::new(service);
     let sem = Arc::new(Semaphore::new(concurrency));
