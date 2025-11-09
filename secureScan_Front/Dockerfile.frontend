@@ -8,7 +8,12 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --no-audit --no-fund
+# Use npm ci when a lockfile is present for deterministic builds, otherwise fall back to npm install.
+RUN if [ -f package-lock.json ]; then \
+			npm ci --no-audit --no-fund; \
+		else \
+			npm install --no-audit --no-fund; \
+		fi
 COPY . .
 
 # Build-time argument injected into Vite. Must be set when building (e.g. --build-arg VITE_API_BASE=...)
