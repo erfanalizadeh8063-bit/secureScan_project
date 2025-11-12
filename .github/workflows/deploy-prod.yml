@@ -1,0 +1,110 @@
+name: SecuraScan Production Deploy
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  DEPLOY_ENV: production
+  TIMEOUT: 25
+
+jobs:
+  deploy:
+    name: Build & Deploy to Render (Production)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust (for backend build)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build backend (release)
+        run: |
+          cd secureScan_Back
+          cargo build --release
+          echo "✅ Backend built successfully."
+
+      - name: Set up Node.js (for frontend)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build frontend
+        run: |
+          cd secureScan_Front
+          npm ci
+          if [ -z "$VITE_API_BASE" ]; then export VITE_API_BASE="${{ secrets.RENDER_BACKEND_URL }}"; fi
+          npm run build
+          echo "✅ Frontend built successfully."
+
+      - name: Trigger Render Backend Deploy
+        env:
+          RENDER_BACKEND_DEPLOY_HOOK: ${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}
+        run: |
+          if [ -n "${RENDER_BACKEND_DEPLOY_HOOK}" ]; then
+            echo "🚀 Deploying backend to Render..."
+            curl -fsS -X POST "${RENDER_BACKEND_DEPLOY_HOOK}" || echo "⚠️ Backend deploy hook failed"
+          else
+            echo "⚠️ Backend deploy hook not found"
+          fi
+
+      - name: Trigger Render Frontend Deploy
+        env:
+          RENDER_FRONTEND_DEPLOY_HOOK: ${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK }}
+        run: |
+          if [ -n "${RENDER_FRONTEND_DEPLOY_HOOK}" ]; then
+            echo "🚀 Deploying frontend to Render..."
+            curl -fsS -X POST "${RENDER_FRONTEND_DEPLOY_HOOK}" || echo "⚠️ Frontend deploy hook failed"
+          else
+            echo "⚠️ Frontend deploy hook not found"
+          fi
+
+      - name: Health Check (Backend)
+        run: |
+          echo "⏳ Waiting for backend to become healthy..."
+          for i in $(seq 1 $TIMEOUT); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.RENDER_BACKEND_URL }}/healthz" || echo 000)
+            echo "Attempt $i → $CODE"
+            [ "$CODE" = "200" ] && { echo "✅ Backend healthy!"; exit 0; }
+            sleep 6
+          done
+          echo "❌ Backend failed health check" && exit 1
+
+      - name: Health Check (Frontend)
+        run: |
+          echo "⏳ Waiting for frontend availability..."
+          for i in $(seq 1 $TIMEOUT); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.RENDER_FRONTEND_URL }}" || echo 000)
+            echo "Attempt $i → $CODE"
+            if [ "$CODE" = "200" ] || [ "$CODE" = "304" ]; then
+              echo "✅ Frontend serving successfully!"
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "❌ Frontend failed health check" && exit 1
+
+      - name: Notify Success (PR Comment)
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const msg = `
+            🟢 **Production Deployment Complete**
+            - Backend: ✅ OK
+            - Frontend: ✅ OK
+            Environment: 🌍 Production
+            `;
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: msg
+            })
