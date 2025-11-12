@@ -1,84 +1,36 @@
-name: CI - Build
-
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
-jobs:
-  backend:
-    name: Build backend
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Setup Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-
-      - name: Build (release)
-        working-directory: secureScan_Back
-        run: cargo build --release
-
-  frontend:
-    name: Build frontend
-    runs-on: ubuntu-latest
-    needs: backend
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Use Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-
-      - name: Cache node modules
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-
-      - name: Install & Build
-        working-directory: secureScan_Front
-        run: |
-          npm ci
-          npm run build
 name: Build SecuraScan
+
 on:
   push:
     branches:
       - main
       - feature/**
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         service: [backend, frontend]
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 🧱 Cache npm for frontend
       - name: Cache frontend npm
-        if: matrix.service == 'frontend'
+        if: ${{ matrix.service == 'frontend' }}
         uses: actions/cache@v4
         with:
           path: ~/.npm
           key: npm-cache-${{ runner.os }}-${{ hashFiles('secureScan_Front/package-lock.json') }}
 
+      # ⚙️ Cache cargo for backend
       - name: Cache backend cargo
-        if: matrix.service == 'backend'
+        if: ${{ matrix.service == 'backend' }}
         uses: actions/cache@v4
         with:
           path: |
@@ -87,28 +39,29 @@ jobs:
             secureScan_Back/target
           key: cargo-cache-${{ runner.os }}-${{ hashFiles('secureScan_Back/Cargo.lock') }}
 
+      # 🧩 Setup Node for frontend
       - name: Set up Node.js
-        if: matrix.service == 'frontend'
+        if: ${{ matrix.service == 'frontend' }}
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
+      # 🪶 Build frontend
       - name: Build Frontend
-        if: matrix.service == 'frontend'
+        if: ${{ matrix.service == 'frontend' }}
         run: |
           cd secureScan_Front
           npm ci
           npm run build
 
-      - name: Install Rust
-        if: matrix.service == 'backend'
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
+      # 🦀 Setup Rust for backend
+      - name: Set up Rust toolchain
+        if: ${{ matrix.service == 'backend' }}
+        uses: dtolnay/rust-toolchain@stable
 
+      # 🔨 Build backend
       - name: Build Backend
-        if: matrix.service == 'backend'
+        if: ${{ matrix.service == 'backend' }}
         run: |
           cd secureScan_Back
           cargo build --release

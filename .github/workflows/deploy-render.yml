@@ -1,187 +1,94 @@
-name: Deploy → Render
+name: SecuraScan CI
 
 on:
   workflow_dispatch:
   push:
+    branches: [ main, 'feature/**', 'ci/**' ]
+  pull_request:
     branches: [ main ]
 
-env:
-  RENDER_API_BASE: https://api.render.com/v1
+permissions:
+  contents: read
+  security-events: write
 
 jobs:
-  deploy:
+  security:
+    name: Security checks
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install jq & curl (ensure)
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y jq curl
-
-      - name: Validate & normalize secrets
-        id: norm
+      - name: Run gitleaks (secret scan)
+        uses: gitleaks/gitleaks-action@v2.3.6
         env:
-          RAW_KEY:   ${{ secrets.RENDER_API_KEY }}
-          RAW_BACK:  ${{ secrets.RENDER_BACK_SERVICE_ID }}
-          RAW_FRONT: ${{ secrets.RENDER_FRONT_SERVICE_ID }}
-          RAW_BASE:  ${{ env.RENDER_API_BASE }}
-        run: |
-          set -e
-          [ -n "$RAW_KEY" ]   || (echo "❌ Missing RENDER_API_KEY" && exit 1)
-          [ -n "$RAW_BACK" ]  || (echo "❌ Missing RENDER_BACK_SERVICE_ID" && exit 1)
-          [ -n "$RAW_FRONT" ] || (echo "❌ Missing RENDER_FRONT_SERVICE_ID" && exit 1)
-          [ -n "$RAW_BASE" ]  || (echo "❌ Missing RENDER_API_BASE" && exit 1)
-          KEY="$(printf %s "$RAW_KEY"   | tr -d '\r\n')"
-          BACK="$(printf %s "$RAW_BACK"  | tr -d '\r\n \t')"
-          FRONT="$(printf %s "$RAW_FRONT" | tr -d '\r\n \t')"
-          BASE="$(printf %s "$RAW_BASE"  | tr -d '\r\n \t')"
-          BASE="${BASE%/}"
-          echo "BASE=$BASE"   >> "$GITHUB_OUTPUT"
-          echo "BACK=$BACK"   >> "$GITHUB_OUTPUT"
-          echo "FRONT=$FRONT" >> "$GITHUB_OUTPUT"
-          echo "Normalized: $BASE/services/$BACK ; $BASE/services/$FRONT"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --verbose
 
-      - name: Fetch backend service info
-        id: back_info
-        env:
-          BASE: ${{ steps.norm.outputs.BASE }}
-          BACK: ${{ steps.norm.outputs.BACK }}
-        run: |
-          set -e
-          KEY="${{ secrets.RENDER_API_KEY }}"
-          curl -fsS -H "Accept: application/json" -H "Authorization: Bearer $KEY" \
-            "$BASE/services/$BACK" > backend.json
-          # URL may live in different fields; check them all
-          cat backend.json | jq -r '
-            .serviceDetails.url // .url // .service.url // empty
-          ' > backend_url.txt
-          sed -i 's:/*$::' backend_url.txt || true   # remove trailing slashes
-          echo "Backend URL: $(cat backend_url.txt || echo '')"
+      - name: Install cargo-audit
+        run: cargo install cargo-audit || true
 
-      - name: Fetch frontend service info
-        id: front_info
-        env:
-          BASE: ${{ steps.norm.outputs.BASE }}
-          FRONT: ${{ steps.norm.outputs.FRONT }}
+      - name: Run cargo-audit
         run: |
-          set -e
-          KEY="${{ secrets.RENDER_API_KEY }}"
-          curl -fsS -H "Accept: application/json" -H "Authorization: Bearer $KEY" \
-            "$BASE/services/$FRONT" > frontend.json
-          cat frontend.json | jq -r '
-            .serviceDetails.url // .url // .service.url // empty
-          ' > frontend_url.txt
-          sed -i 's:/*$::' frontend_url.txt || true
-          echo "Frontend URL: $(cat frontend_url.txt || echo '')"
+          cd secureScan_Back
+          cargo audit || true
 
-      - name: Upsert frontend env VITE_API_BASE (→ backend)
-        env:
-          BASE: ${{ steps.norm.outputs.BASE }}
-          FRONT: ${{ steps.norm.outputs.FRONT }}
-        run: |
-          set -e
-          KEY="${{ secrets.RENDER_API_KEY }}"
-          BACK_URL="$(cat backend_url.txt || true)"
-          if [ -z "$BACK_URL" ]; then
-            echo "⚠️ Backend URL not detected; skipping VITE_API_BASE update"
-            exit 0
-          fi
-          # Use VITE_API_BASE (matches frontend code expecting VITE_API_BASE)
-          BODY="$(jq -nc --arg k VITE_API_BASE --arg v "$BACK_URL" '{key:$k, value:$v, scope:"env"}')"
-          # POST (create) → if fails, PUT (update)
-          curl -sS -X POST -H "Accept: application/json" -H "Content-Type: application/json" \
-               -H "Authorization: Bearer $KEY" \
-               -d "$BODY" \
-               "$BASE/services/$FRONT/env-vars" \
-          || curl -sS -X PUT -H "Accept: application/json" -H "Content-Type: application/json" \
-               -H "Authorization: Bearer $KEY" \
-               -d "$BODY" \
-               "$BASE/services/$FRONT/env-vars"
+  build-and-scan:
+    name: Build and quick-scan
+    runs-on: ubuntu-latest
+    needs: security
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Upsert backend env FRONT_ORIGIN (→ frontend)
-        env:
-          BASE: ${{ steps.norm.outputs.BASE }}
-          BACK: ${{ steps.norm.outputs.BACK }}
-        run: |
-          set -e
-          KEY="${{ secrets.RENDER_API_KEY }}"
-          FRONT_URL="$(cat frontend_url.txt || true)"
-          if [ -z "$FRONT_URL" ]; then
-            echo "⚠️ Frontend URL not detected; skipping FRONT_ORIGIN update"
-            exit 0
-          fi
-          BODY="$(jq -nc --arg k FRONT_ORIGIN --arg v "$FRONT_URL" '{key:$k, value:$v, scope:"env"}')"
-          curl -sS -X POST -H "Accept: application/json" -H "Content-Type: application/json" \
-               -H "Authorization: Bearer $KEY" \
-               -d "$BODY" \
-               "$BASE/services/$BACK/env-vars" \
-          || curl -sS -X PUT -H "Accept: application/json" -H "Content-Type: application/json" \
-               -H "Authorization: Bearer $KEY" \
-               -d "$BODY" \
-               "$BASE/services/$BACK/env-vars"
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Trigger FRONTEND deploy
-        env:
-          BASE: ${{ steps.norm.outputs.BASE }}
-          FRONT: ${{ steps.norm.outputs.FRONT }}
+      - name: Build backend
         run: |
-          set -e
-          KEY="${{ secrets.RENDER_API_KEY }}"
-          echo "🚀 Triggering frontend deploy…"
-          curl -fsS -X POST -H "Accept: application/json" \
-               -H "Authorization: Bearer $KEY" \
-               "$BASE/services/$FRONT/deploys"
+          cd secureScan_Back
+          cargo build --release
 
-      - name: Trigger BACKEND deploy
-        env:
-          BASE: ${{ steps.norm.outputs.BASE }}
-          BACK: ${{ steps.norm.outputs.BACK }}
+      - name: Run backend tests
         run: |
-          set -e
-          KEY="${{ secrets.RENDER_API_KEY }}"
-          echo "🚀 Triggering backend deploy…"
-          curl -fsS -X POST -H "Accept: application/json" \
-               -H "Authorization: Bearer $KEY" \
-               "$BASE/services/$BACK/deploys"
+          cd secureScan_Back
+          cargo test --release
 
-      - name: Wait for BACKEND health (/healthz)
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build frontend (bundle-check)
         run: |
-          set -e
-          BACK_URL="$(cat backend_url.txt || true)"
-          if [ -z "$BACK_URL" ]; then
-            echo "⚠️ Backend URL unknown; skipping health check"
-            exit 0
-          fi
-          echo "🩺 Polling $BACK_URL/healthz"
-          for i in $(seq 1 20); do
-            CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BACK_URL/healthz" || echo 000)
-            echo " attempt $i → $CODE"
-            [ "$CODE" = "200" ] && { echo "✅ Backend healthy"; exit 0; }
-            sleep 6
+          cd secureScan_Front
+          npm ci
+          # اگر متغیر VITE_API_BASE تنظیم نشده بود، از localhost استفاده می‌کنیم
+          if [ -z "$VITE_API_BASE" ]; then export VITE_API_BASE="http://127.0.0.1:8080"; fi
+          npm run build
+
+      - name: Start backend (background)
+        run: |
+          cd secureScan_Back
+          nohup cargo run --release > backend.log 2>&1 &
+
+      - name: Wait for backend
+        run: |
+          for i in {1..15}; do
+            if curl -sSf http://127.0.0.1:8080/healthz; then
+              echo "✅ Backend is ready"
+              exit 0
+            fi
+            echo "⏳ Waiting for backend..."
+            sleep 1
           done
-          echo "❌ Backend not healthy in time"; exit 1
+          echo "❌ Backend failed to start" && exit 1
 
-      - name: Wait for FRONTEND root
+      - name: Call CI webhook (non-blocking)
+        id: webhook
         run: |
-          set -e
-          FRONT_URL="$(cat frontend_url.txt || true)"
-          if [ -z "$FRONT_URL" ]; then
-            echo "⚠️ Frontend URL unknown; skipping"
-            exit 0
-          fi
-          echo "🌐 Polling $FRONT_URL"
-          for i in $(seq 1 20); do
-            CODE=$(curl -s -o /dev/null -w "%{http_code}" "$FRONT_URL" || echo 000)
-            echo " attempt $i → $CODE"
-            [ "$CODE" = "200" ] || [ "$CODE" = "304" ] && { echo "✅ Frontend serving"; exit 0; }
-            sleep 6
-          done
-          echo "❌ Frontend not serving in time"; exit 1
-
-      - name: Final URLs
-        run: |
-          echo "Backend URL : $(cat backend_url.txt  || echo 'unknown')"
-          echo "Frontend URL: $(cat frontend_url.txt || echo 'unknown')"
+          RESP=$(curl -sS -X POST http://127.0.0.1:8080/api/ci/webhook/github -d '{}' || echo '')
+          echo "response<<EOF" >> $GITHUB_OUTPUT
+          echo "$RESP" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT

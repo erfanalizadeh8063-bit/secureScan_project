@@ -10,8 +10,9 @@ jobs:
   security:
     name: SecuraScan CI / security
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Cache Rust dependencies
@@ -25,8 +26,11 @@ jobs:
 
       - name: Run gitleaks (secret scan)
         uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          args: '--verbose'
+          config-path: .gitleaks.toml
+          verbose: true
 
       - name: Install cargo-audit
         run: cargo install cargo-audit || true
@@ -37,7 +41,7 @@ jobs:
           cargo audit || true
 
   build-and-scan:
-    name: build-and-scan
+    name: Build & Scan Integration
     runs-on: ubuntu-latest
     needs: security
     env:
@@ -45,8 +49,9 @@ jobs:
       RENDER_FRONTEND_DEPLOY_HOOK: ${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK }}
       RENDER_BACKEND_URL: ${{ secrets.RENDER_BACKEND_URL }}
       RENDER_FRONTEND_URL: ${{ secrets.RENDER_FRONTEND_URL }}
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Cache Rust dependencies
@@ -59,7 +64,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Set up Rust
-        uses: actions/setup-rust@v1
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Build backend
         run: |
@@ -74,7 +79,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
       - name: Cache Node modules
         uses: actions/cache@v4
@@ -95,15 +100,17 @@ jobs:
           cd secureScan_Back
           nohup cargo run --release &
 
-      - name: Wait for backend
+      - name: Wait for backend health
         run: |
           for i in {1..15}; do
             if curl -sSf http://127.0.0.1:8080/healthz; then
+              echo "✅ Backend ready"
               exit 0
             fi
-            sleep 1
+            echo "⏳ Waiting for backend..."
+            sleep 2
           done
-          exit 1
+          echo "❌ Backend did not start in time" && exit 1
 
       - name: Call CI webhook and evaluate risk_score
         id: webhook
@@ -121,10 +128,9 @@ jobs:
             fi
           fi
 
-      - name: Trigger optional Render deploy hooks
+      - name: Trigger Render deploy hooks (optional)
         run: |
           set -e
-          # Trigger deploy hooks if provided (no-op if not set)
           if [ -n "${RENDER_FRONTEND_DEPLOY_HOOK}" ]; then
             echo "Triggering frontend deploy hook..."
             curl -fsS -X POST "${RENDER_FRONTEND_DEPLOY_HOOK}" || echo "frontend hook failed"
@@ -139,10 +145,9 @@ jobs:
             echo "No backend deploy hook provided; skipping"
           fi
 
-      - name: Optional Render health checks
+      - name: Perform Render health checks
         run: |
           set -e
-          # Poll backend health if RENDER_BACKEND_URL provided
           if [ -n "${RENDER_BACKEND_URL}" ]; then
             echo "Polling backend at ${RENDER_BACKEND_URL}/healthz"
             for i in $(seq 1 20); do
@@ -155,7 +160,6 @@ jobs:
             echo "No RENDER_BACKEND_URL provided; skipping backend health check"
           fi
 
-          # Poll frontend root if RENDER_FRONTEND_URL provided
           if [ -n "${RENDER_FRONTEND_URL}" ]; then
             echo "Polling frontend at ${RENDER_FRONTEND_URL}"
             for i in $(seq 1 20); do
@@ -181,7 +185,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body: `SecuraScan CI completed. risk_score=${risk}`
+                body: `SecuraScan CI completed ✅ risk_score=${risk}`
               })
             }
         env:
