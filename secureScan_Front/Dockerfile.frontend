@@ -21,7 +21,16 @@ ARG VITE_API_BASE=https://securascan-back-dd57.onrender.com
 ENV VITE_API_BASE=${VITE_API_BASE}
 
 # ensure build runs after ARG/ENV is set so Vite can read the value at build time
-RUN npm run build
+# Fail early if VITE_API_BASE points to a localhost/127.0.0.1 address — this
+# prevents accidentally baking a local dev URL into a production build.
+RUN if [ -z "${VITE_API_BASE}" ]; then echo "ERROR: VITE_API_BASE is not set. Set --build-arg VITE_API_BASE=<https://your-backend>" && exit 1; fi && \
+		echo "Checking VITE_API_BASE=${VITE_API_BASE}" && \
+		case "${VITE_API_BASE}" in \
+			http://localhost*|http://127.*|https://localhost*|https://127.*) \
+				echo "ERROR: VITE_API_BASE appears to be a local address (${VITE_API_BASE}). Aborting build." && exit 1 ;; \
+			*) echo "VITE_API_BASE looks OK" ;; \
+		esac && \
+		npm run build
 
 # Runtime: use nginx to serve static files and listen on $PORT (envsubstituted)
 FROM nginx:alpine AS runtime

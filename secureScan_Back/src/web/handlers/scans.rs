@@ -1,5 +1,6 @@
 use actix_web::{get, post, web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use uuid::Uuid;
 use url::Url;
 
@@ -12,31 +13,50 @@ pub async fn list_scans(service: web::Data<ScanService>) -> Result<impl Responde
     Ok(HttpResponse::Ok().json(items))
 }
 
-#[allow(dead_code)]
-#[derive(Deserialize)]
-pub struct StartScanReq {
-    pub target_url: String,
-}
+// New minimal mock endpoints for public Beta
+// Accept flexible payloads and return a fixed JSON mock response.
 
 #[allow(dead_code)]
-#[derive(Serialize)]
-pub struct StartScanRes {
-    pub scan_id: Uuid,
-    pub status: String,
+#[derive(Deserialize)]
+pub struct UrlReq {
+    pub url: Option<String>,
+}
+
+#[post("/scan")]
+pub async fn mock_scan(payload: web::Json<serde_json::Value>) -> impl Responder {
+    let url = payload
+        .get("url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("https://example.com");
+    let id = Uuid::new_v4();
+    HttpResponse::Ok().json(json!({
+        "scan_id": id,
+        "status": "mocked",
+        "url": url
+    }))
 }
 
 #[post("/api/scans")]
 pub async fn start_scan(
-    service: web::Data<ScanService>,
-    payload: web::Json<StartScanReq>,
+    _service: web::Data<ScanService>,
+    payload: web::Json<serde_json::Value>,
 ) -> Result<impl Responder, ApiError> {
-    let url = Url::parse(&payload.target_url)
-        .map_err(|_| ApiError::BadRequest("invalid url".into()))?;
-    let id = service.enqueue(url)?;
-    Ok(HttpResponse::Ok().json(StartScanRes {
-        scan_id: id,
-        status: "queued".into(),
-    }))
+    // Accept either { "target": "..." } or { "target_url": "..." }
+    let url_str = payload
+        .get("target")
+        .and_then(|v| v.as_str())
+        .or_else(|| payload.get("target_url").and_then(|v| v.as_str()))
+        .unwrap_or("https://example.com");
+
+    // Try to parse to validate; if invalid, return BadRequest
+    let _ = Url::parse(url_str).map_err(|_| ApiError::BadRequest("invalid url".into()))?;
+
+    let id = Uuid::new_v4();
+    Ok(HttpResponse::Ok().json(json!({
+        "scan_id": id,
+        "status": "mocked",
+        "url": url_str
+    })))
 }
 
 #[get("/api/scans/{id}")]

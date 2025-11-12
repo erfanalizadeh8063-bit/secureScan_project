@@ -163,6 +163,9 @@ async fn main() -> std::io::Result<()> {
             .service(health)
             .service(healthz)
             .service(readiness)
+            // Mock scan endpoints for public Beta
+            .service(web::handlers::scans::mock_scan)
+            .service(web::handlers::scans::start_scan)
             .route(
                 "/api/ci/webhook/github",
                 aw_web::post().to(|req: HttpRequest, body: aw_web::Bytes| async move { github_webhook(req, body).await }),

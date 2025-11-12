@@ -1,0 +1,35 @@
+name: CodeQL analysis
+
+permissions:
+  contents: read
+  security-events: write
+
+on:
+  push:
+    branches: [ main, 'ci/**', 'feature/**' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: CodeQL / analyze
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript,rust
+          # Keep recommended query packs; don't fail the job if queries error.
+          queries: security-extended
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Run CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        # make analysis non-blocking to avoid fork/PR surprises; SARIF will still upload
+        continue-on-error: true

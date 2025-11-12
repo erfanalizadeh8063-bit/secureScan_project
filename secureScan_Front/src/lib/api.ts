@@ -1,19 +1,23 @@
 // Simple API client (relative base to work with Vite proxy)
 import type { ApiScan, ScanItem } from "@/types/api";
 
-// Centralized API base helper; export so other modules can use it
-// prefer VITE_API_BASE; require build to provide it (avoid baking localhost into prod bundles)
-// Prefer VITE_API_BASE (baked at build time). If not present, allow a runtime
-// override via window.__CONFIG__.API_BASE which can be injected by the hosting
-// layer (nginx envsubst). This makes static bundles more flexible for container
-// deployments where you can inject the backend origin at container start.
-const baked = (import.meta as any)?.env?.VITE_API_BASE?.toString();
-const runtime = (globalThis as any)?.__CONFIG__?.API_BASE;
-export const API_BASE = baked || runtime || "";
+// Canonical API base: VITE_API_BASE at build-time.
+// Use of a runtime-injected `window.__CONFIG__` is intentionally ignored in
+// production to avoid conflicting settings where a stale or local value could
+// be baked into the bundle. This enforces a single canonical source for the
+// backend origin: VITE_API_BASE.
+const baked = (import.meta as any)?.env?.VITE_API_BASE?.toString() || "";
+// If a runtime injection exists, log a warning (do not use it).
+if ((globalThis as any)?.__CONFIG__?.API_BASE) {
+  // eslint-disable-next-line no-console
+  console.warn("window.__CONFIG__.API_BASE is present but will be ignored — use VITE_API_BASE at build time to configure the API base.");
+}
 
-// Fail loudly in production if neither build-time nor runtime config exists.
+export const API_BASE = baked;
+
+// Fail loudly in production if baked value is missing.
 if (!API_BASE) {
-  const msg = "VITE_API_BASE is missing — set it at build-time or provide window.__CONFIG__.API_BASE at runtime.";
+  const msg = "VITE_API_BASE is missing — set it at build-time (Render env or build arg).";
   if ((import.meta as any).env?.PROD) throw new Error(msg);
   // In dev, warn so local iteration still works when developers forget to set it.
   // eslint-disable-next-line no-console
