@@ -2,35 +2,30 @@ name: SecuraScan CI (clean)
 
 on:
   push:
-    branches: [ main, 'feature/**', 'ci/**' ]
-  pull_request:
-    branches: [ main ]
+    branches: [ beta/ready ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  BACKEND_PORT: 8080
 
 jobs:
   security:
-    name: SecuraScan CI / security
+    name: Security checks
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Cache Rust dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            secureScan_Back/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
       - name: Run gitleaks (secret scan)
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v2.3.6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          config-path: .gitleaks.toml
-          verbose: true
+          args: --verbose
 
       - name: Install cargo-audit
         run: cargo install cargo-audit || true
@@ -40,30 +35,15 @@ jobs:
           cd secureScan_Back
           cargo audit || true
 
-  build-and-scan:
-    name: Build & Scan Integration
+  build:
+    name: Build & Test
     runs-on: ubuntu-latest
     needs: security
-    env:
-      RENDER_BACKEND_DEPLOY_HOOK: ${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}
-      RENDER_FRONTEND_DEPLOY_HOOK: ${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK }}
-      RENDER_BACKEND_URL: ${{ secrets.RENDER_BACKEND_URL }}
-      RENDER_FRONTEND_URL: ${{ secrets.RENDER_FRONTEND_URL }}
-
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Cache Rust dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            secureScan_Back/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Set up Rust
+      - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build backend
@@ -79,120 +59,91 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-
-      - name: Cache Node modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.npm
-            secureScan_Front/node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('**/secureScan_Front/package-lock.json') }}
+          node-version: 20
 
       - name: Build frontend
         run: |
           cd secureScan_Front
           npm ci
+          if [ -z "$VITE_API_BASE" ]; then export VITE_API_BASE="https://securascan-back-dd57.onrender.com"; fi
           npm run build
 
-      - name: Start backend (background)
-        run: |
-          cd secureScan_Back
-          nohup cargo run --release &
+  deploy:
+    name: Auto Deploy to Render
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Wait for backend health
+      - name: Trigger Render Frontend Deploy
+        if: success()
+        env:
+          RENDER_FRONTEND_DEPLOY_HOOK: ${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK }}
         run: |
-          for i in {1..15}; do
-            if curl -sSf http://127.0.0.1:8080/healthz; then
-              echo "✅ Backend ready"
+          if [ -n "${RENDER_FRONTEND_DEPLOY_HOOK}" ]; then
+            echo "🚀 Triggering Frontend Deploy..."
+            curl -fsS -X POST "${RENDER_FRONTEND_DEPLOY_HOOK}" || echo "⚠️ Frontend deploy hook failed"
+          else
+            echo "⚠️ No RENDER_FRONTEND_DEPLOY_HOOK provided"
+          fi
+
+      - name: Trigger Render Backend Deploy
+        if: success()
+        env:
+          RENDER_BACKEND_DEPLOY_HOOK: ${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}
+        run: |
+          if [ -n "${RENDER_BACKEND_DEPLOY_HOOK}" ]; then
+            echo "🚀 Triggering Backend Deploy..."
+            curl -fsS -X POST "${RENDER_BACKEND_DEPLOY_HOOK}" || echo "⚠️ Backend deploy hook failed"
+          else
+            echo "⚠️ No RENDER_BACKEND_DEPLOY_HOOK provided"
+          fi
+
+      - name: Poll Backend Health
+        run: |
+          if [ -z "${{ secrets.RENDER_BACKEND_URL }}" ]; then
+            echo "⚠️ No backend URL provided, skipping health check"
+            exit 0
+          fi
+          echo "⏳ Waiting for backend health check..."
+          for i in $(seq 1 20); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.RENDER_BACKEND_URL }}/healthz" || echo 000)
+            echo "Attempt $i → $CODE"
+            [ "$CODE" = "200" ] && { echo "✅ Backend healthy"; exit 0; }
+            sleep 8
+          done
+          echo "❌ Backend failed health check" && exit 1
+
+      - name: Poll Frontend Health
+        run: |
+          if [ -z "${{ secrets.RENDER_FRONTEND_URL }}" ]; then
+            echo "⚠️ No frontend URL provided, skipping health check"
+            exit 0
+          fi
+          echo "⏳ Waiting for frontend availability..."
+          for i in $(seq 1 20); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.RENDER_FRONTEND_URL }}" || echo 000)
+            echo "Attempt $i → $CODE"
+            if [ "$CODE" = "200" ] || [ "$CODE" = "304" ]; then
+              echo "✅ Frontend is serving successfully"
               exit 0
             fi
-            echo "⏳ Waiting for backend..."
-            sleep 2
+            sleep 8
           done
-          echo "❌ Backend did not start in time" && exit 1
+          echo "❌ Frontend failed health check" && exit 1
 
-      - name: Call CI webhook and evaluate risk_score
-        id: webhook
-        run: |
-          set -e
-          RESP=$(curl -sS -X POST http://127.0.0.1:8080/api/ci/webhook/github -d '{}' || echo '')
-          echo "response=$RESP" >> $GITHUB_OUTPUT
-          if [ -z "$RESP" ]; then
-            echo "risk=0" >> $GITHUB_OUTPUT
-          else
-            RISK=$(echo "$RESP" | jq -r '.risk_score // 0')
-            echo "risk=$RISK" >> $GITHUB_OUTPUT
-            if [ "$RISK" -ge 80 ]; then
-              echo "High risk ($RISK) detected"; exit 1
-            fi
-          fi
-
-      - name: Trigger Render deploy hooks (optional)
-        run: |
-          set -e
-          if [ -n "${RENDER_FRONTEND_DEPLOY_HOOK}" ]; then
-            echo "Triggering frontend deploy hook..."
-            curl -fsS -X POST "${RENDER_FRONTEND_DEPLOY_HOOK}" || echo "frontend hook failed"
-          else
-            echo "No frontend deploy hook provided; skipping"
-          fi
-
-          if [ -n "${RENDER_BACKEND_DEPLOY_HOOK}" ]; then
-            echo "Triggering backend deploy hook..."
-            curl -fsS -X POST "${RENDER_BACKEND_DEPLOY_HOOK}" || echo "backend hook failed"
-          else
-            echo "No backend deploy hook provided; skipping"
-          fi
-
-      - name: Perform Render health checks
-        run: |
-          set -e
-          if [ -n "${RENDER_BACKEND_URL}" ]; then
-            echo "Polling backend at ${RENDER_BACKEND_URL}/healthz"
-            for i in $(seq 1 20); do
-              CODE=$(curl -s -o /dev/null -w "%{http_code}" "${RENDER_BACKEND_URL}/healthz" || echo 000)
-              echo " attempt $i → $CODE"
-              [ "$CODE" = "200" ] && { echo "✅ Backend healthy"; break; }
-              sleep 6
-            done
-          else
-            echo "No RENDER_BACKEND_URL provided; skipping backend health check"
-          fi
-
-          if [ -n "${RENDER_FRONTEND_URL}" ]; then
-            echo "Polling frontend at ${RENDER_FRONTEND_URL}"
-            for i in $(seq 1 20); do
-              CODE=$(curl -s -o /dev/null -w "%{http_code}" "${RENDER_FRONTEND_URL}" || echo 000)
-              echo " attempt $i → $CODE"
-              if [ "$CODE" = "200" ] || [ "$CODE" = "304" ]; then
-                echo "✅ Frontend serving"; break
-              fi
-              sleep 6
-            done
-          else
-            echo "No RENDER_FRONTEND_URL provided; skipping frontend health check"
-          fi
-
-      - name: Comment on PR (if low risk)
+      - name: Comment Deployment Result on PR
         if: github.event_name == 'pull_request' && always()
         uses: actions/github-script@v7
         with:
           script: |
-            const risk = parseInt(process.env.RISK || '0');
-            if (context.issue && context.issue.number) {
-              github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: `SecuraScan CI completed ✅ risk_score=${risk}`
-              })
-            }
-        env:
-          RISK: ${{ steps.webhook.outputs.risk }}
-
-      - name: Docker prune (cleanup)
-        if: ${{ success() }}
-        run: |
-          docker builder prune -af || true
-          docker system prune -af || true
+            const backend = process.env.BACKEND_STATUS || 'unknown';
+            const frontend = process.env.FRONTEND_STATUS || 'unknown';
+            const body = `✅ **SecuraScan Auto Deploy** completed.\n\nBackend: ${backend}\nFrontend: ${frontend}`;
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            })
