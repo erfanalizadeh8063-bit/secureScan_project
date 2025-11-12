@@ -7,104 +7,87 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   security:
-    name: SecuraScan CI / security
+    name: Security checks
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Run gitleaks (secret scan)
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v2.3.6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          args: '--verbose'
+          args: --verbose
 
       - name: Install cargo-audit
         run: cargo install cargo-audit || true
 
       - name: Run cargo-audit
-        name: SecuraScan CI
+        run: |
+          cd secureScan_Back
+          cargo audit || true
 
-        on:
-          workflow_dispatch:
-          push:
-            branches: [ main, 'feature/**', 'ci/**' ]
-          pull_request:
-            branches: [ main ]
+  build-and-scan:
+    name: Build and quick-scan
+    runs-on: ubuntu-latest
+    needs: security
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-        jobs:
-          security:
-            name: Security checks
-            runs-on: ubuntu-latest
-            steps:
-              - name: Checkout
-                uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
 
-              - name: Run gitleaks (secret scan)
-                uses: gitleaks/gitleaks-action@v2
-                with:
-                  args: '--verbose'
+      - name: Build backend
+        run: |
+          cd secureScan_Back
+          cargo build --release
 
-              - name: Install cargo-audit
-                run: cargo install cargo-audit || true
+      - name: Run backend tests
+        run: |
+          cd secureScan_Back
+          cargo test --release
 
-              - name: Run cargo-audit
-                run: |
-                  cd secureScan_Back
-                  cargo audit || true
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-          build-and-scan:
-            name: Build and quick-scan
-            runs-on: ubuntu-latest
-            needs: security
-            steps:
-              - name: Checkout
-                uses: actions/checkout@v4
+      - name: Build frontend (bundle-check)
+        run: |
+          cd secureScan_Front
+          npm ci
+          if [ -z "$VITE_API_BASE" ]; then export VITE_API_BASE="http://127.0.0.1:8080"; fi
+          npm run build
 
-              - name: Set up Rust
-                uses: actions/setup-rust@v1
+      - name: Start backend (background)
+        run: |
+          cd secureScan_Back
+          nohup cargo run --release > backend.log 2>&1 &
 
-              - name: Build backend
-                run: |
-                  cd secureScan_Back
-                  cargo build --release
+      - name: Wait for backend
+        run: |
+          for i in {1..15}; do
+            if curl -sSf http://127.0.0.1:8080/healthz; then
+              echo "✅ Backend is ready"
+              exit 0
+            fi
+            echo "⏳ Waiting for backend..."
+            sleep 1
+          done
+          echo "❌ Backend failed to start" && exit 1
 
-              - name: Run backend tests
-                run: |
-                  cd secureScan_Back
-                  cargo test --release
-
-              - name: Setup Node
-                uses: actions/setup-node@v4
-                with:
-                  node-version: '18'
-
-              - name: Build frontend (uses VITE_API_BASE for bundle check)
-                run: |
-                  cd secureScan_Front
-                  npm ci
-                  # For CI-only verification we set VITE_API_BASE to local backend shim
-                  VITE_API_BASE="http://127.0.0.1:8080" npm run build
-
-              - name: Start backend (background)
-                run: |
-                  cd secureScan_Back
-                  nohup cargo run --release &
-
-              - name: Wait for backend
-                run: |
-                  for i in {1..15}; do
-                    if curl -sSf http://127.0.0.1:8080/healthz; then
-                      exit 0
-                    fi
-                    sleep 1
-                  done
-                  exit 1
-
-              - name: Call CI webhook (non-blocking)
-                id: webhook
-                run: |
-                  RESP=$(curl -sS -X POST http://127.0.0.1:8080/api/ci/webhook/github -d '{}' || echo '')
-                  echo "response=$RESP" >> $GITHUB_OUTPUT
-name: securascanname: SecuraScan CI
+      - name: Call CI webhook (non-blocking)
+        id: webhook
+        run: |
+          RESP=$(curl -sS -X POST http://127.0.0.1:8080/api/ci/webhook/github -d '{}' || echo '')
+          echo "response<<EOF" >> $GITHUB_OUTPUT
+          echo "$RESP" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
