@@ -13,90 +13,79 @@ on:
 jobs:
   trivy-scan:
     runs-on: ubuntu-latest
-    steps:
 
+    steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # -----------------------------
       # Build backend image
-      # -----------------------------
       - name: Build backend image
         run: |
           docker build -t securascan-back:${{ github.run_id }} \
             -f secureScan_Back/Dockerfile.backend secureScan_Back
 
-      # -----------------------------
       # Build frontend image
-      # -----------------------------
       - name: Build frontend image
         run: |
           docker build -t securascan-front:${{ github.run_id }} \
             -f secureScan_Front/Dockerfile.frontend secureScan_Front
 
-      # -----------------------------
-      # Trivy scan backend (NEVER fail here)
-      # -----------------------------
+      # Install Trivy CLI
+      - name: Install Trivy (CLI)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo deb https://aquasecurity.github.io/trivy-repo/deb stable main | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
+      # Scan backend image → SARIF
       - name: Trivy scan backend
         run: |
           trivy image \
+            --severity HIGH,CRITICAL \
             --format sarif \
             --output trivy-back.sarif \
-            --severity HIGH,CRITICAL \
             --ignore-unfixed \
-            securascan-back:${{ github.run_id }} || true
+            securascan-back:${{ github.run_id }}
 
-      # -----------------------------
-      # Trivy scan frontend
-      # -----------------------------
+      # Scan frontend image → SARIF
       - name: Trivy scan frontend
         run: |
           trivy image \
+            --severity HIGH,CRITICAL \
             --format sarif \
             --output trivy-front.sarif \
-            --severity HIGH,CRITICAL \
             --ignore-unfixed \
-            securascan-front:${{ github.run_id }} || true
+            securascan-front:${{ github.run_id }}
 
-      # -----------------------------
-      # Upload SARIF to GitHub Security tab
-      # -----------------------------
-      - name: Upload SARIF results (backend)
-        if: always()
+      # Upload SARIF reports
+      - name: Upload backend SARIF
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-back.sarif
 
-      - name: Upload SARIF results (frontend)
-        if: always()
+      - name: Upload frontend SARIF
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-front.sarif
 
-      # -----------------------------
-      # Upload SARIF artifacts
-      # -----------------------------
-      - name: Upload Trivy reports
-        if: always()
+      # Upload artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: trivy-reports-${{ github.run_id }}
+          name: trivy-sarif-${{ github.run_id }}
           path: |
             trivy-back.sarif
             trivy-front.sarif
 
-      # -----------------------------
-      # Hard fail only if SARIF contains HIGH/CRITICAL
-      # -----------------------------
+      # Fail if vulnerabilities found
       - name: Fail if HIGH/CRITICAL detected
         run: |
-          if grep -q '"level": "error"' trivy-back.sarif 2>/dev/null || \
-             grep -q '"level": "error"' trivy-front.sarif 2>/dev/null; then
-            echo "❌ HIGH/CRITICAL vulnerabilities detected."
-            exit 1
-          else
-            echo "✅ No HIGH/CRITICAL vulnerabilities found."
-          fi
+          echo "❌ HIGH/CRITICAL vulnerabilities detected by Trivy."
+          exit 1
+        if: failure()
