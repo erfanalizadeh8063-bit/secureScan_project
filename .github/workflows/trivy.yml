@@ -25,42 +25,38 @@ jobs:
       # 🧱 Build backend image
       - name: Build backend image
         run: |
-          docker build -t securascan-back:${{ github.run_id }} \
+          docker build \
+            -t securascan-back:${{ github.run_id }} \
             -f secureScan_Back/Dockerfile.backend secureScan_Back
 
       # 🧱 Build frontend image
       - name: Build frontend image
         run: |
-          docker build -t securascan-front:${{ github.run_id }} \
+          docker build \
+            -t securascan-front:${{ github.run_id }} \
             -f secureScan_Front/Dockerfile.frontend secureScan_Front
 
       # 🔍 Scan backend image
       - name: Trivy scan backend
-        uses: aquasecurity/trivy-action@0.24.0
-        continue-on-error: true
-        with:
-          scan-type: image
-          scan-ref: securascan-back:${{ github.run_id }}
-          format: sarif
-          output: trivy-back.sarif
-          severity: HIGH,CRITICAL
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: os,library
+        run: |
+          trivy image \
+            --format sarif \
+            --output trivy-back.sarif \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --vuln-type os,library \
+            securascan-back:${{ github.run_id }} || true
 
       # 🔍 Scan frontend image
       - name: Trivy scan frontend
-        uses: aquasecurity/trivy-action@0.24.0
-        continue-on-error: true
-        with:
-          scan-type: image
-          scan-ref: securascan-front:${{ github.run_id }}
-          format: sarif
-          output: trivy-front.sarif
-          severity: HIGH,CRITICAL
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: os,library
+        run: |
+          trivy image \
+            --format sarif \
+            --output trivy-front.sarif \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --vuln-type os,library \
+            securascan-front:${{ github.run_id }} || true
 
       # 📤 Upload SARIF to GitHub Security tab
       - name: Upload SARIF results (backend)
@@ -75,7 +71,7 @@ jobs:
         with:
           sarif_file: trivy-front.sarif
 
-      # 📦 Upload artifacts for inspection
+      # 📦 Upload artifacts
       - name: Upload Trivy reports as artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -85,9 +81,15 @@ jobs:
             trivy-back.sarif
             trivy-front.sarif
 
-      # 🚨 Fail if critical vulnerabilities found
+      # 🚨 Fail if vulnerabilities exist
       - name: Fail if HIGH/CRITICAL findings detected
-        if: failure()
         run: |
-          echo "❌ HIGH/CRITICAL vulnerabilities detected by Trivy."
-          exit 1
+          if grep -q '"severity": "HIGH"' trivy-back.sarif || \
+             grep -q '"severity": "CRITICAL"' trivy-back.sarif || \
+             grep -q '"severity": "HIGH"' trivy-front.sarif || \
+             grep -q '"severity": "CRITICAL"' trivy-front.sarif; then
+            echo "❌ HIGH/CRITICAL vulnerabilities detected by Trivy."
+            exit 1
+          else
+            echo "✅ No HIGH/CRITICAL vulnerabilities found."
+          fi
