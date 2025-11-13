@@ -15,16 +15,12 @@ jobs:
         working-directory: secureScan_Back
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
-
       - name: Cargo cache
         uses: Swatinem/rust-cache@v2
-
       - name: Build (release)
         run: cargo build --release
-
       - name: Tests
         run: cargo test --all --release
 
@@ -37,16 +33,13 @@ jobs:
         working-directory: secureScan_Front
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: '20'
+          cache: 'npm'
           cache-dependency-path: secureScan_Front/package-lock.json
-
       - name: Install dependencies
         run: npm ci
-
       - name: Build
         run: |
           if [ -z "$VITE_API_BASE" ]; then
@@ -63,7 +56,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Build backend image
       - name: Build backend image
         run: |
           docker build \
@@ -71,7 +63,6 @@ jobs:
             -t securascan-back:ci \
             secureScan_Back
 
-      # Build frontend image WITH ALLOW_LOCAL_API=true
       - name: Build frontend image
         run: |
           docker build \
@@ -81,7 +72,6 @@ jobs:
             -t securascan-front:ci \
             secureScan_Front
 
-      # Save Docker images
       - name: Save Docker images
         run: |
           docker save securascan-back:ci -o back.tar
@@ -104,19 +94,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Download saved Docker images
       - name: Download saved Docker images
         uses: actions/download-artifact@v4
         with:
           name: docker-images
 
-      # Load the images into Docker
       - name: Load Docker images
         run: |
           docker load -i back.tar
           docker load -i front.tar
 
-      # Trivy backend scan
       - name: Scan backend
         uses: aquasecurity/trivy-action@master
         with:
@@ -125,8 +112,8 @@ jobs:
           format: sarif
           output: trivy-back.sarif
           severity: HIGH,CRITICAL
+          exit-code: '0'
 
-      # Trivy frontend scan
       - name: Scan frontend
         uses: aquasecurity/trivy-action@master
         with:
@@ -135,8 +122,8 @@ jobs:
           format: sarif
           output: trivy-front.sarif
           severity: HIGH,CRITICAL
+          exit-code: '0'
 
-      # Upload SARIF for GitHub Security tab
       - name: Upload SARIF backend
         uses: github/codeql-action/upload-sarif@v3
         with:

@@ -1,52 +1,40 @@
-# -------------------------
-#  FRONTEND BUILD STAGE
-# -------------------------
+# ----------- Stage 1: Build with Node 20 -----------
 FROM node:20-alpine AS builder
-
 WORKDIR /app
 
-# Install build deps (for esbuild native binary)
-RUN apk add --no-cache \
-    libc6-compat \
-    python3 \
-    make \
-    g++ 
-
-# Copy package files first (better caching)
 COPY secureScan_Front/package*.json ./
-
-# Install dependencies
 RUN npm ci
 
-# Copy full frontend source
 COPY secureScan_Front/ .
 
-# Rebuild esbuild for Alpine (avoids native binary errors)
-RUN npm rebuild esbuild@0.21.5 --build-from-source || true
+# Optional flag: allow localhost API base during CI
+ARG ALLOW_LOCAL_API=""
+ARG VITE_API_BASE=""
 
-# Build frontend
-RUN npm run build
+RUN if [ -z "$VITE_API_BASE" ]; then \
+        echo "ERROR: VITE_API_BASE is not set!" && exit 1; \
+    fi && \
+    if [ -z "$ALLOW_LOCAL_API" ]; then \
+        case "$VITE_API_BASE" in \
+            http://localhost*|http://127.*|https://localhost*|https://127.*) \
+                echo "ERROR: Localhost API base detected in production build: $VITE_API_BASE" && exit 1 ;; \
+            *) echo "VITE_API_BASE looks valid" ;; \
+        esac; \
+    else \
+        echo "⚠️ Allowing local VITE_API_BASE because ALLOW_LOCAL_API=$ALLOW_LOCAL_API"; \
+    fi
+
+# Build
+RUN apk add --no-cache libc6-compat \
+    && apk add --no-cache --virtual .build-deps python3 make g++ \
+    && npm rebuild esbuild@0.21.5 --build-from-source || true \
+    && node -e "require('esbuild'); console.log('esbuild ok')" \
+    && npm run build \
+    && apk del .build-deps
 
 
-# -------------------------
-#  RUNTIME STAGE (NGINX)
-# -------------------------
+# ----------- Stage 2: Runtime with Nginx -----------
 FROM nginx:1.27-alpine
-
-# Copy build output
 COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Copy nginx template
-COPY secureScan_Front/nginx/default.conf.template /etc/nginx/templates/default.conf.template
-
-# Create directory for runtime JS config
-RUN mkdir -p /usr/share/nginx/html
-
-# Inject runtime env at container start
-CMD ["sh", "-c", "\
-  echo \"window.__CONFIG__ = { API_BASE: '${BACKEND_ORIGIN}' }\" > /usr/share/nginx/html/__env.js && \
-  envsubst '${PORT} ${BACKEND_ORIGIN}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && \
-  nginx -g 'daemon off;' \
-"]
-
-EXPOSE 8080
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
