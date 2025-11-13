@@ -40,20 +40,62 @@ jobs:
         run: npm ci
       - name: Build
         run: |
-          # Ensure build-time API base is set for CI bundle check
           if [ -z "$VITE_API_BASE" ]; then
-            echo "VITE_API_BASE not set in workflow environment — using localhost for bundle-check only";
+            echo "VITE_API_BASE not set — using localhost";
             export VITE_API_BASE="http://127.0.0.1:8080";
           fi
           npm run build
 
   docker-validate:
-    name: Docker images (validate)
+    name: Docker images — validate build
     runs-on: ubuntu-latest
     needs: [backend, frontend]
     steps:
       - uses: actions/checkout@v4
+
       - name: Build backend image
-        run: docker build -f secureScan_Back/Dockerfile.backend -t securascan-back:ci secureScan_Back
-      - name: Build frontend image (requires VITE_API_BASE build-arg)
-        run: docker build -f secureScan_Front/Dockerfile.frontend -t securascan-front:ci --build-arg VITE_API_BASE=${{ env.VITE_API_BASE || 'http://127.0.0.1:8080' }} secureScan_Front
+        run: docker build \
+            -f secureScan_Back/Dockerfile.backend \
+            -t securascan-back:ci secureScan_Back
+
+      - name: Build frontend image
+        run: docker build \
+            -f secureScan_Front/Dockerfile.frontend \
+            -t securascan-front:ci \
+            --build-arg VITE_API_BASE="https://securascan-back-dd57.onrender.com" \
+            secureScan_Front
+
+  trivy-scan:
+    name: Trivy Security Scan
+    runs-on: ubuntu-latest
+    needs: docker-validate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Trivy (official action)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "image"
+          image-ref: "securascan-back:ci"
+          format: "sarif"
+          output: "trivy-back.sarif"
+          severity: "HIGH,CRITICAL"
+
+      - name: Upload backend SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-back.sarif
+
+      - name: Scan frontend image
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "image"
+          image-ref: "securascan-front:ci"
+          format: "sarif"
+          output: "trivy-front.sarif"
+          severity: "HIGH,CRITICAL"
+
+      - name: Upload frontend SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-front.sarif
