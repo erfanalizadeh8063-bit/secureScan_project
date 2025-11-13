@@ -1,17 +1,52 @@
+# -------------------------
+#  FRONTEND BUILD STAGE
+# -------------------------
 FROM node:20-alpine AS builder
-WORKDIR /app
-COPY secureScan_Front/package*.json ./
-RUN npm ci
-COPY secureScan_Front/ .
-# Ensure compatibility for esbuild native binary and rebuild specified version
-RUN apk add --no-cache libc6-compat \
-	&& apk add --no-cache --virtual .build-deps python3 make g++ \
-	&& npm rebuild esbuild@0.21.5 --build-from-source || true \
-	&& node -e "require('esbuild'); console.log('esbuild ok')" \
-	&& npm run build \
-	&& apk del .build-deps
 
+WORKDIR /app
+
+# Install build deps (for esbuild native binary)
+RUN apk add --no-cache \
+    libc6-compat \
+    python3 \
+    make \
+    g++ 
+
+# Copy package files first (better caching)
+COPY secureScan_Front/package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy full frontend source
+COPY secureScan_Front/ .
+
+# Rebuild esbuild for Alpine (avoids native binary errors)
+RUN npm rebuild esbuild@0.21.5 --build-from-source || true
+
+# Build frontend
+RUN npm run build
+
+
+# -------------------------
+#  RUNTIME STAGE (NGINX)
+# -------------------------
 FROM nginx:1.27-alpine
+
+# Copy build output
 COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
+
+# Copy nginx template
+COPY secureScan_Front/nginx/default.conf.template /etc/nginx/templates/default.conf.template
+
+# Create directory for runtime JS config
+RUN mkdir -p /usr/share/nginx/html
+
+# Inject runtime env at container start
+CMD ["sh", "-c", "\
+  echo \"window.__CONFIG__ = { API_BASE: '${BACKEND_ORIGIN}' }\" > /usr/share/nginx/html/__env.js && \
+  envsubst '${PORT} ${BACKEND_ORIGIN}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && \
+  nginx -g 'daemon off;' \
+"]
+
+EXPOSE 8080
