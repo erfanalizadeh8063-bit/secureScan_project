@@ -2,6 +2,7 @@ use actix_web::{http::StatusCode, ResponseError};
 use serde::Serialize;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum ApiError {
     BadRequest(String),
@@ -29,6 +30,7 @@ impl ResponseError for ApiError {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Serialize)]
 pub struct ErrorResponse {
     pub error: String,

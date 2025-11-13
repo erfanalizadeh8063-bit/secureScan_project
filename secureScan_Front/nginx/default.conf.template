@@ -25,5 +25,6 @@ server {
   add_header Referrer-Policy "no-referrer-when-downgrade" always;
   add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
   # Minimal Content Security Policy - allow connecting to the backend origin for API calls
-  add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://securascan-back-dd57.onrender.com" always;
+  # BACKEND_ORIGIN is substituted at container start by envsubst (see Dockerfile.frontend).
+  add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ${BACKEND_ORIGIN}" always;
 }

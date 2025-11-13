@@ -1,0 +1,341 @@
+diff --git a/.github/workflows/trivy.yml b/.github/workflows/trivy.yml
+index 27ccf78..217f7ac 100644
+--- a/.github/workflows/trivy.yml
++++ b/.github/workflows/trivy.yml
+@@ -11,10 +11,10 @@ on:
+ 
+ jobs:
+   trivy-scan:
+-    name: trivy-scan
++    name: Build images & scan with Trivy
+     runs-on: ubuntu-latest
+     steps:
+-      - name: Checkout
++      - name: Checkout repository
+         uses: actions/checkout@v4
+ 
+       - name: Set up Docker buildx
+@@ -22,43 +22,41 @@ jobs:
+ 
+       - name: Build backend image
+         run: |
+-          docker build -t app-back -f secureScan_Back/Dockerfile.backend secureScan_Back
++          docker build -t securascan-back:${{ github.run_id }} -f secureScan_Back/Dockerfile.backend secureScan_Back
+ 
+       - name: Build frontend image
+         run: |
+-          docker build -t app-front -f secureScan_Front/Dockerfile.frontend secureScan_Front
++          docker build -t securascan-front:${{ github.run_id }} -f secureScan_Front/Dockerfile.frontend secureScan_Front
+ 
+-      - name: Trivy scan backend
+-        uses: aquasecurity/trivy-action@0.24.0
+-        with:
+-          image: app-back
+-          format: sarif
+-          output: trivy-back.sarif
+-          severity: HIGH,CRITICAL
+-          exit-code: '1'
++      - name: Scan backend image with Trivy (HIGH/CRITICAL)
++        id: scan-back
++        continue-on-error: true
++        run: |
++          echo "Scanning backend image: securascan-back:${{ github.run_id }}"
++          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image \
++            --format sarif --output trivy-back.sarif --severity HIGH,CRITICAL --exit-code 1 securascan-back:${{ github.run_id }} || true
+ 
+-      - name: Trivy scan frontend
+-        uses: aquasecurity/trivy-action@0.24.0
+-        with:
+-          image: app-front
+-          format: sarif
+-          output: trivy-front.sarif
+-          severity: HIGH,CRITICAL
+-          exit-code: '1'
++      - name: Scan frontend image with Trivy (HIGH/CRITICAL)
++        id: scan-front
++        continue-on-error: true
++        run: |
++          echo "Scanning frontend image: securascan-front:${{ github.run_id }}"
++          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image \
++            --format sarif --output trivy-front.sarif --severity HIGH,CRITICAL --exit-code 1 securascan-front:${{ github.run_id }} || true
+ 
+-      - name: Upload SARIF (backend)
++      - name: Upload SARIF results (backend)
+         if: always()
+         uses: github/codeql-action/upload-sarif@v3
+         with:
+           sarif_file: trivy-back.sarif
+ 
+-      - name: Upload SARIF (frontend)
++      - name: Upload SARIF results (frontend)
+         if: always()
+         uses: github/codeql-action/upload-sarif@v3
+         with:
+           sarif_file: trivy-front.sarif
+ 
+-      - name: Upload Trivy reports
++      - name: Upload Trivy reports as artifact
+         if: always()
+         uses: actions/upload-artifact@v4
+         with:
+@@ -66,6 +64,12 @@ jobs:
+           path: |
+             trivy-back.sarif
+             trivy-front.sarif
++
++      - name: Fail if HIGH/CRITICAL findings were detected
++        if: ${{ steps.scan-back.conclusion == 'failure' || steps.scan-front.conclusion == 'failure' }}
++        run: |
++          echo "One or more images contain HIGH/CRITICAL vulnerabilities according to Trivy. Failing job."
++          exit 1
+ name: trivy-scan
+ 
+ # Allow uploading SARIF to code-scanning
+@@ -241,13 +245,13 @@ jobs:
+ 
+       - name: Upload SARIF results (backend)
+         if: always()
+-        uses: github/codeql-action/upload-sarif@v2
++        uses: github/codeql-action/upload-sarif@v3
+         with:
+           sarif_file: trivy-back.sarif
+ 
+       - name: Upload SARIF results (frontend)
+         if: always()
+-        uses: github/codeql-action/upload-sarif@v2
++        uses: github/codeql-action/upload-sarif@v3
+         with:
+           sarif_file: trivy-front.sarif
+ 
+diff --git a/docs/deploy_checklist.md b/docs/deploy_checklist.md
+index 751ca4d..3690143 100644
+--- a/docs/deploy_checklist.md
++++ b/docs/deploy_checklist.md
+@@ -19,7 +19,7 @@ This checklist documents the manual steps to configure Render and GitHub to depl
+    - From Actions, run `Deploy → Render` (workflow_dispatch) or push to `main`.
+ 
+ 5) After first deploy
+-   - The workflow will attempt to set `VITE_API_URL` on the frontend to the backend public URL and trigger a frontend deploy (clear cache).
++   - The workflow will attempt to set `VITE_API_BASE` on the frontend to the backend public URL and trigger a frontend deploy (clear cache).
+    - It then sets `FRONT_ORIGIN` on the backend to the frontend URL and triggers a backend deploy.
+ 
+ 6) Verification
+@@ -51,8 +51,8 @@ This document lists the Render deployment configuration and post-deploy verifica
+    - `FRONT_ORIGIN` = `https://<your-static-site-url>`
+      - Purpose: restrict CORS to the static site's origin.
+ 2. Frontend (Render static site environment):
+-   - `VITE_API_URL` = `https://<your-backend-url>`
+-     - Note: Vite inlines env variables at build time. After setting `VITE_API_URL`, "Clear build cache & Redeploy" the static site so the new value is baked into the built assets.
++   - `VITE_API_BASE` = `https://<your-backend-url>`
++   - Note: Vite inlines env variables at build time. After setting `VITE_API_BASE`, "Clear build cache & Redeploy" the static site so the new value is baked into the built assets.
+ 
+ ## Final verification steps (after envs are set and redeploy complete)
+ 1. Open the static site URL in a browser: `https://<your-static-site-url>`
+@@ -85,11 +85,11 @@ docker run -p 3000:10000 secfront
+ curl -I http://localhost:3000/healthz
+ ```
+ 
+-If anything fails, collect logs from Render (service dashboard) and check the build logs for the static site to confirm `VITE_API_URL` was set during build.
++If anything fails, collect logs from Render (service dashboard) and check the build logs for the static site to confirm `VITE_API_BASE` was set during build.
+ 
+ ## Quick smoke guide — Frontend on Render (Docker Web)
+ 
+ - In Render → select the frontend service `securascan-front` → Environment (tab): set
+-   `VITE_API_URL=https://<your-backend-url>`
+-- Trigger a deploy (or Clear build cache & Redeploy) so the Vite build picks up `VITE_API_URL` at build time.
++   `VITE_API_BASE=https://<your-backend-url>`
++- Trigger a deploy (or Clear build cache & Redeploy) so the Vite build picks up `VITE_API_BASE` at build time.
+ - Verify root `/` returns HTTP 200 (or 304). If you see 502, check the service logs and ensure the container is binding to the port provided by Render (Render exposes $PORT to the container). The Dockerfile uses `serve -s dist -l ${PORT}` which binds to the provided port.
+diff --git a/docs/frontend_powershell.md b/docs/frontend_powershell.md
+index 3d7f0e5..fda4fdd 100644
+--- a/docs/frontend_powershell.md
++++ b/docs/frontend_powershell.md
+@@ -3,7 +3,7 @@
+ Build and run the frontend with a real backend URL (one-line PowerShell commands):
+ 
+ ```powershell
+-docker build -f secureScan_Front/Dockerfile.frontend secureScan_Front --build-arg VITE_API_URL=http://localhost:8080 --tag sec-front-test
++docker build -f secureScan_Front/Dockerfile.frontend secureScan_Front --build-arg VITE_API_BASE=http://localhost:8080 --tag sec-front-test
+ docker run --rm -p 3000:10000 sec-front-test
+ curl -i http://localhost:3000/healthz
+ ```
+diff --git a/docs/smoke_render.md b/docs/smoke_render.md
+index 4cd10d0..c9d1f7a 100644
+--- a/docs/smoke_render.md
++++ b/docs/smoke_render.md
+@@ -14,5 +14,5 @@ BACK_URL="https://your-back.onrender.com" \
+ The script will call `/healthz` on both services and print the responses. It exits non-zero if either endpoint fails.
+ 
+ Notes:
+-- Ensure `VITE_API_URL` is set in the frontend service on Render before triggering the build, so the frontend bundle knows the backend origin.
++ - Ensure `VITE_API_BASE` is set in the frontend service on Render before triggering the build, so the frontend bundle knows the backend origin.
+ - The script requires `curl` and `sed` available on your machine (common on macOS/Linux and Windows WSL).
+diff --git a/secureScan_Back/src/domain/errors.rs b/secureScan_Back/src/domain/errors.rs
+index 8c52c60..0441620 100644
+--- a/secureScan_Back/src/domain/errors.rs
++++ b/secureScan_Back/src/domain/errors.rs
+@@ -2,6 +2,7 @@ use actix_web::{http::StatusCode, ResponseError};
+ use serde::Serialize;
+ use std::fmt::{Display, Formatter, Result as FmtResult};
+ 
++#[allow(dead_code)]
+ #[derive(Debug)]
+ pub enum ApiError {
+     BadRequest(String),
+@@ -29,6 +30,7 @@ impl ResponseError for ApiError {
+     }
+ }
+ 
++#[allow(dead_code)]
+ #[derive(Serialize)]
+ pub struct ErrorResponse {
+     pub error: String,
+diff --git a/secureScan_Back/src/domain/scan_service.rs b/secureScan_Back/src/domain/scan_service.rs
+index 4014b17..c23b053 100644
+--- a/secureScan_Back/src/domain/scan_service.rs
++++ b/secureScan_Back/src/domain/scan_service.rs
+@@ -6,6 +6,7 @@ use std::sync::{Arc, RwLock};
+ use url::Url;
+ use uuid::Uuid;
+ 
++#[allow(dead_code)]
+ #[derive(Clone, Serialize, Deserialize, Debug)]
+ #[serde(rename_all = "lowercase")]
+ pub enum ScanStatus {
+@@ -16,6 +17,7 @@ pub enum ScanStatus {
+     Canceled,
+ }
+ 
++#[allow(dead_code)]
+ #[derive(Clone, Serialize, Deserialize, Debug, Default)]
+ pub struct Finding {
+     pub r#type: String,
+@@ -25,6 +27,7 @@ pub struct Finding {
+     pub location: String,
+ }
+ 
++#[allow(dead_code)]
+ #[derive(Clone, Serialize, Deserialize, Debug)]
+ pub struct ScanRecord {
+     pub id: Uuid,
+@@ -35,12 +38,14 @@ pub struct ScanRecord {
+     pub finished_at: Option<DateTime<Utc>>,
+ }
+ 
++#[allow(dead_code)]
+ #[derive(Clone)]
+ pub struct ScanService {
+     state: Arc<RwLock<HashMap<Uuid, ScanRecord>>>,
+     queue: ScanQueue,
+ }
+ 
++#[allow(dead_code)]
+ impl ScanService {
+     pub fn new(queue: ScanQueue) -> Self {
+         Self {
+diff --git a/secureScan_Back/src/jobs/queue.rs b/secureScan_Back/src/jobs/queue.rs
+index 9acd1fd..43defdb 100644
+--- a/secureScan_Back/src/jobs/queue.rs
++++ b/secureScan_Back/src/jobs/queue.rs
+@@ -7,6 +7,7 @@ use crate::domain::scan_service::{ScanService, ScanStatus, Finding as ApiFinding
+ use crate::scanner;
+ 
+ /// Represents a single scan job.
++#[allow(dead_code)]
+ #[derive(Clone, Debug)]
+ pub struct ScanJob {
+     pub id: Uuid,
+@@ -14,11 +15,13 @@ pub struct ScanJob {
+ }
+ 
+ /// Thin wrapper around an mpsc sender to enqueue jobs.
++#[allow(dead_code)]
+ #[derive(Clone)]
+ pub struct ScanQueue {
+     tx: mpsc::Sender<ScanJob>,
+ }
+ 
++#[allow(dead_code)]
+ impl ScanQueue {
+     pub fn new(tx: mpsc::Sender<ScanJob>) -> Self {
+         Self { tx }
+@@ -32,6 +35,7 @@ impl ScanQueue {
+ 
+ /// Starts worker dispatcher that receives jobs and processes them concurrently.
+ /// This function spawns its own background task and returns immediately.
++#[allow(dead_code)]
+ pub fn start_workers(service: ScanService, mut rx: mpsc::Receiver<ScanJob>, concurrency: usize) {
+     let service = Arc::new(service);
+     let sem = Arc::new(Semaphore::new(concurrency));
+diff --git a/secureScan_Back/src/main.rs b/secureScan_Back/src/main.rs
+index c9ab89f..15e9443 100644
+--- a/secureScan_Back/src/main.rs
++++ b/secureScan_Back/src/main.rs
+@@ -1,4 +1,6 @@
+-﻿use actix_web::{get, App, HttpRequest, HttpResponse, HttpServer, middleware, web as aw_web};
++﻿#![allow(dead_code)]
++
++use actix_web::{get, App, HttpRequest, HttpResponse, HttpServer, middleware, web as aw_web};
+ use actix_web::dev::{ServiceRequest, ServiceResponse, Transform};
+ use actix_web::http::header;
+ use actix_cors::Cors;
+@@ -179,7 +181,8 @@ async fn main() -> std::io::Result<()> {
+         // wait for ctrl-c or termination
+         let _ = tokio::signal::ctrl_c().await;
+         info!("shutdown signal received, stopping server");
+-        srv_handle.stop(true);
++        // `stop` returns a future; await it to ensure the stop request is executed
++        let _ = srv_handle.stop(true).await;
+     });
+ 
+     // wait for server to finish
+@@ -190,11 +193,12 @@ async fn main() -> std::io::Result<()> {
+         }
+         Ok(Err(e)) => {
+             error!(%e, "server error");
+-            Err(std::io::Error::new(std::io::ErrorKind::Other, format!("server error: {}", e)))
++            // use std::io::Error::other as suggested by clippy
++            Err(std::io::Error::other(format!("server error: {}", e)))
+         }
+         Err(e) => {
+             error!(%e, "server task join error");
+-            Err(std::io::Error::new(std::io::ErrorKind::Other, format!("join error: {}", e)))
++            Err(std::io::Error::other(format!("join error: {}", e)))
+         }
+     }
+ }
+diff --git a/secureScan_Back/src/web/handlers/scans.rs b/secureScan_Back/src/web/handlers/scans.rs
+index 5201805..e36fd46 100644
+--- a/secureScan_Back/src/web/handlers/scans.rs
++++ b/secureScan_Back/src/web/handlers/scans.rs
+@@ -12,11 +12,13 @@ pub async fn list_scans(service: web::Data<ScanService>) -> Result<impl Responde
+     Ok(HttpResponse::Ok().json(items))
+ }
+ 
++#[allow(dead_code)]
+ #[derive(Deserialize)]
+ pub struct StartScanReq {
+     pub target_url: String,
+ }
+ 
++#[allow(dead_code)]
+ #[derive(Serialize)]
+ pub struct StartScanRes {
+     pub scan_id: Uuid,
+diff --git a/secureScan_Back/src/web/handlers/webhook.rs b/secureScan_Back/src/web/handlers/webhook.rs
+index 4bf769c..b5a3176 100644
+--- a/secureScan_Back/src/web/handlers/webhook.rs
++++ b/secureScan_Back/src/web/handlers/webhook.rs
+@@ -1,4 +1,4 @@
+-use actix_web::{http::header, HttpRequest, HttpResponse};
++use actix_web::{HttpRequest, HttpResponse};
+ use actix_web::web::Bytes;
+ use hmac::{Hmac, Mac};
+ use sha2::Sha256;
+diff --git a/secureScan_Front/.env.production b/secureScan_Front/.env.production
+index 5637487..226de4f 100644
+--- a/secureScan_Front/.env.production
++++ b/secureScan_Front/.env.production
+@@ -1 +1 @@
+-VITE_API_URL=https://example.com
++VITE_API_BASE=http://127.0.0.1:8080

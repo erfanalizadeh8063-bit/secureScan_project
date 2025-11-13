@@ -1,256 +1,81 @@
-name: trivy-scan
-
-# Allow uploading SARIF to code-scanning
+name: Trivy Scan
 permissions:
   security-events: write
+  contents: read
 
 on:
-  pull_request:
   push:
-  workflow_dispatch:
-
-jobs:
-  trivy-scan:
-    name: trivy-scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Docker buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build backend image
-        run: |
-          docker build -t app-back -f secureScan_Back/Dockerfile.backend secureScan_Back
-
-      - name: Build frontend image
-        run: |
-          docker build -t app-front -f secureScan_Front/Dockerfile.frontend secureScan_Front
-
-      - name: Trivy scan backend
-        uses: aquasecurity/trivy-action@0.24.0
-        with:
-          image: app-back
-          format: sarif
-          output: trivy-back.sarif
-          severity: HIGH,CRITICAL
-          exit-code: '1'
-
-      - name: Trivy scan frontend
-        uses: aquasecurity/trivy-action@0.24.0
-        with:
-          image: app-front
-          format: sarif
-          output: trivy-front.sarif
-          severity: HIGH,CRITICAL
-          exit-code: '1'
-
-      - name: Upload SARIF (backend)
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-back.sarif
-
-      - name: Upload SARIF (frontend)
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-front.sarif
-
-      - name: Upload Trivy reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-reports-${{ github.run_id }}
-          path: |
-            trivy-back.sarif
-            trivy-front.sarif
-name: trivy-scan
-
-# Allow uploading SARIF to code-scanning
-permissions:
-  security-events: write
-
-on:
-  pull_request:
-  push:
-  workflow_dispatch:
-
-jobs:
-  trivy-scan:
-    name: trivy-scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Docker buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build backend image
-        run: |
-          docker build -t app-back -f secureScan_Back/Dockerfile.backend secureScan_Back
-
-      - name: Build frontend image
-        run: |
-          docker build -t app-front -f secureScan_Front/Dockerfile.frontend secureScan_Front
-
-      - name: Trivy scan backend
-        uses: aquasecurity/trivy-action@0.24.0
-        with:
-          image: app-back
-          format: sarif
-          output: trivy-back.sarif
-          severity: HIGH,CRITICAL
-          exit-code: '1'
-
-      - name: Trivy scan frontend
-        uses: aquasecurity/trivy-action@0.24.0
-        with:
-          image: app-front
-          format: sarif
-          output: trivy-front.sarif
-          severity: HIGH,CRITICAL
-          exit-code: '1'
-
-      - name: Upload SARIF (backend)
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-back.sarif
-
-      - name: Upload SARIF (frontend)
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-front.sarif
-
-      - name: Upload Trivy reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-reports-${{ github.run_id }}
-          path: |
-            trivy-back.sarif
-            trivy-front.sarif
-
-on:
-  pull_request:
-  push:
-  workflow_dispatch:
-
-jobs:
-  trivy-scan:
-    name: trivy-scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Docker buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build backend image
-        run: |
-          docker build -t app-back -f secureScan_Back/Dockerfile.backend secureScan_Back
-
-      - name: Build frontend image
-        run: |
-          docker build -t app-front -f secureScan_Front/Dockerfile.frontend secureScan_Front
-
-      - name: Trivy scan backend
-        uses: aquasecurity/trivy-action@0.24.0
-        with:
-          image: app-back
-          format: sarif
-          output: trivy-back.sarif
-          severity: HIGH,CRITICAL
-          exit-code: '1'
-
-      - name: Trivy scan frontend
-        uses: aquasecurity/trivy-action@0.24.0
-        with:
-          image: app-front
-          format: sarif
-          output: trivy-front.sarif
-          severity: HIGH,CRITICAL
-          exit-code: '1'
-
-      - name: Upload SARIF (backend)
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-back.sarif
-
-      - name: Upload SARIF (frontend)
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-front.sarif
-
-      - name: Upload Trivy reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-reports-${{ github.run_id }}
-          path: |
-            trivy-back.sarif
-            trivy-front.sarif
-
-# Allow uploading SARIF to code-scanning
-permissions:
-  security-events: write
-
-on:
+    branches: [ main, 'feature/**', 'ci/**', 'beta/**' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
 
 jobs:
   trivy-scan:
-    name: Build images & scan with Trivy
+    name: Build Docker images & scan with Trivy
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 🧱 Build backend image
       - name: Build backend image
         run: |
-          docker build -t securascan-back:${{ github.run_id }} -f secureScan_Back/Dockerfile.backend secureScan_Back
+          docker build -t securascan-back:${{ github.run_id }} \
+            -f secureScan_Back/Dockerfile.backend secureScan_Back
 
+      # 🧱 Build frontend image
       - name: Build frontend image
         run: |
-          docker build -t securascan-front:${{ github.run_id }} -f secureScan_Front/Dockerfile.frontend secureScan_Front
+          docker build -t securascan-front:${{ github.run_id }} \
+            -f secureScan_Front/Dockerfile.frontend secureScan_Front
 
-      - name: Scan backend image with Trivy (HIGH/CRITICAL)
-        id: scan-back
+      # 🔍 Scan backend image
+      - name: Trivy scan backend
+        uses: aquasecurity/trivy-action@0.24.0
         continue-on-error: true
-        run: |
-          echo "Scanning backend image: securascan-back:${{ github.run_id }}"
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image \
-            --format sarif --output trivy-back.sarif --severity HIGH,CRITICAL --exit-code 1 securascan-back:${{ github.run_id }} || true
+        with:
+          scan-type: image
+          scan-ref: securascan-back:${{ github.run_id }}
+          format: sarif
+          output: trivy-back.sarif
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
 
-      - name: Scan frontend image with Trivy (HIGH/CRITICAL)
-        id: scan-front
+      # 🔍 Scan frontend image
+      - name: Trivy scan frontend
+        uses: aquasecurity/trivy-action@0.24.0
         continue-on-error: true
-        run: |
-          echo "Scanning frontend image: securascan-front:${{ github.run_id }}"
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image \
-            --format sarif --output trivy-front.sarif --severity HIGH,CRITICAL --exit-code 1 securascan-front:${{ github.run_id }} || true
+        with:
+          scan-type: image
+          scan-ref: securascan-front:${{ github.run_id }}
+          format: sarif
+          output: trivy-front.sarif
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
 
+      # 📤 Upload SARIF to GitHub Security tab
       - name: Upload SARIF results (backend)
         if: always()
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-back.sarif
 
       - name: Upload SARIF results (frontend)
         if: always()
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-front.sarif
 
+      # 📦 Upload artifacts for inspection
       - name: Upload Trivy reports as artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -260,8 +85,9 @@ jobs:
             trivy-back.sarif
             trivy-front.sarif
 
-      - name: Fail if HIGH/CRITICAL findings were detected
-        if: ${{ steps.scan-back.conclusion == 'failure' || steps.scan-front.conclusion == 'failure' }}
+      # 🚨 Fail if critical vulnerabilities found
+      - name: Fail if HIGH/CRITICAL findings detected
+        if: failure()
         run: |
-          echo "One or more images contain HIGH/CRITICAL vulnerabilities according to Trivy. Failing job."
+          echo "❌ HIGH/CRITICAL vulnerabilities detected by Trivy."
           exit 1

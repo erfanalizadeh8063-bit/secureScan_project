@@ -4,6 +4,7 @@ use scraper::{Html, Selector};
 use std::collections::HashMap;
 
 /// Represents the result of a website scan.
+#[allow(dead_code)]
 #[derive(Debug, serde::Serialize, Clone)]
 pub struct ScanResult {
     pub url: String,
@@ -13,6 +14,7 @@ pub struct ScanResult {
 }
 
 /// Performs a simple HTTP request and analyzes basic security aspects.
+#[allow(dead_code)]
 pub async fn scan_target(target: &str) -> Result<ScanResult> {
     let url = normalize_target(target);
 
@@ -61,6 +63,7 @@ pub async fn scan_target(target: &str) -> Result<ScanResult> {
 }
 
 /// Ensure the target has a scheme; default to https:// when missing.
+#[allow(dead_code)]
 fn normalize_target(t: &str) -> String {
     let t = t.trim();
     if t.starts_with("http://") || t.starts_with("https://") {
@@ -71,6 +74,7 @@ fn normalize_target(t: &str) -> String {
 }
 
 /// Analyzes HTML and HTTP headers for common security findings.
+#[allow(dead_code)]
 fn analyze_html(_url: &str, body: &str, headers: &HashMap<String, String>) -> Vec<String> {
     let mut findings = Vec::new();
 

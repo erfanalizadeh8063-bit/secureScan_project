@@ -8,7 +8,12 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --no-audit --no-fund
+# Use npm ci when a lockfile is present for deterministic builds, otherwise fall back to npm install.
+RUN if [ -f package-lock.json ]; then \
+			npm ci --no-audit --no-fund; \
+		else \
+			npm install --no-audit --no-fund; \
+		fi
 COPY . .
 
 # Build-time argument injected into Vite. Must be set when building (e.g. --build-arg VITE_API_BASE=...)
@@ -16,7 +21,16 @@ ARG VITE_API_BASE=https://securascan-back-dd57.onrender.com
 ENV VITE_API_BASE=${VITE_API_BASE}
 
 # ensure build runs after ARG/ENV is set so Vite can read the value at build time
-RUN npm run build
+# Fail early if VITE_API_BASE points to a localhost/127.0.0.1 address — this
+# prevents accidentally baking a local dev URL into a production build.
+RUN if [ -z "${VITE_API_BASE}" ]; then echo "ERROR: VITE_API_BASE is not set. Set --build-arg VITE_API_BASE=<https://your-backend>" && exit 1; fi && \
+		echo "Checking VITE_API_BASE=${VITE_API_BASE}" && \
+		case "${VITE_API_BASE}" in \
+			http://localhost*|http://127.*|https://localhost*|https://127.*) \
+				echo "ERROR: VITE_API_BASE appears to be a local address (${VITE_API_BASE}). Aborting build." && exit 1 ;; \
+			*) echo "VITE_API_BASE looks OK" ;; \
+		esac && \
+		npm run build
 
 # Runtime: use nginx to serve static files and listen on $PORT (envsubstituted)
 FROM nginx:alpine AS runtime
@@ -24,8 +38,12 @@ RUN apk add --no-cache gettext
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 
-# Use envsubst at container start to write nginx config that listens on $PORT
+# Expose runtime env so the nginx template can put the backend origin into CSP.
+# Set BACKEND_ORIGIN from the build-time VITE_API_BASE by default so containerized
+# deployments without explicit BACKEND_ORIGIN still have a sensible default.
 ENV PORT=8080
+ENV BACKEND_ORIGIN=${VITE_API_BASE}
 EXPOSE 8080
-CMD ["/bin/sh", "-c", "envsubst '${PORT}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
+# Substitute PORT and BACKEND_ORIGIN at container start so CSP and listen port are correct.
+CMD ["/bin/sh", "-c", "# inject runtime config for JS bundles, then write nginx conf and start nginx\nmkdir -p /usr/share/nginx/html && echo \"window.__CONFIG__ = { API_BASE: '${BACKEND_ORIGIN}' }\" > /usr/share/nginx/html/__env.js && envsubst '${PORT} ${BACKEND_ORIGIN}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
 

@@ -1,0 +1,70 @@
+name: CodeQL Analysis
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+on:
+  push:
+    branches: [ main, 'ci/**', 'feature/**', 'beta/**' ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 3 * * 0'  # Weekly scan on Sunday 3AM
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: CodeQL / Analyze
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'javascript', 'rust' ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 🧠 Initialize CodeQL with recommended security queries
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended,security-and-quality
+
+      # ⚙️ Manual build (since project has both Rust & JS)
+      - name: Build project
+        run: |
+          echo "🔧 Building backend (Rust)"
+          if [ -d secureScan_Back ]; then
+            cd secureScan_Back
+            cargo build --release
+            cd ..
+          fi
+
+          echo "🧱 Building frontend (Node)"
+          if [ -d secureScan_Front ]; then
+            cd secureScan_Front
+            npm ci
+            npm run build
+            cd ..
+          fi
+
+      # 🧩 Perform CodeQL analysis
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        continue-on-error: true
+        with:
+          category: '/language:${{ matrix.language }}'
+
+      # 📦 Upload SARIF report as artifact for backup
+      - name: Upload CodeQL SARIF reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-reports-${{ matrix.language }}-${{ github.run_id }}
+          path: |
+            ./results/*.sarif

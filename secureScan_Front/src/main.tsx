@@ -5,6 +5,7 @@ import "./styles/tailwind.css";
 import Shell from "./pages/Shell";
 import Home from "./pages/Home";
 import Landing from "./pages/Landing";
+import LiveScan from "./pages/LiveScan";
 import Results from "./pages/Results";
 import History from "./pages/History";
 import Dashboard from "./pages/Dashboard";
@@ -17,7 +18,7 @@ const router = createBrowserRouter([
     path: "/",
     element: <Shell />,
   children: [
-  { index: true, element: <Landing /> },
+  { index: true, element: <LiveScan /> },
       { path: "results", element: <Results /> },
       { path: "history", element: <History /> },
       { path: "dashboard", element: <Dashboard /> },
