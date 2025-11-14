@@ -10,10 +10,12 @@ use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+
 mod web;
 mod domain;
 mod jobs;
 mod scanner;
+
 use web::handlers::webhook::github_webhook;
 use tracing::{info, error};
 
@@ -22,7 +24,6 @@ async fn health() -> HttpResponse {
     HttpResponse::Ok().json(serde_json::json!({"status":"ok"}))
 }
 
-// compatibility endpoint expected by some healthcheck tooling
 #[get("/healthz")]
 async fn healthz() -> HttpResponse {
     HttpResponse::Ok().json(serde_json::json!({"status":"ok"}))
@@ -37,7 +38,7 @@ async fn readiness(ready_flag: aw_web::Data<Arc<AtomicBool>>) -> HttpResponse {
     }
 }
 
-/// Simple timeout middleware that wraps downstream calls with tokio::time::timeout
+/// Simple timeout middleware
 struct TimeoutMiddleware {
     timeout: Duration,
 }
@@ -55,7 +56,6 @@ where
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        // use std::future::ready to construct the immediate future
         std_ready(Ok(TimeoutMiddlewareService {
             service: Arc::new(service),
             timeout: self.timeout,
@@ -92,11 +92,7 @@ where
             match tokio::time::timeout(dur, svc.call(req)).await {
                 Ok(Ok(res)) => Ok(res),
                 Ok(Err(e)) => Err(e),
-                Err(_) => {
-                    // Return a request timeout error with a string message (ErrorRequestTimeout
-                    // expects a Display, not an HttpResponse).
-                    Err(actix_web::error::ErrorRequestTimeout("request timeout"))
-                }
+                Err(_) => Err(actix_web::error::ErrorRequestTimeout("request timeout")),
             }
         })
     }
@@ -104,42 +100,35 @@ where
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    // init tracing/logging
     tracing_subscriber::fmt::init();
 
     let bind = env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
-    // ALLOWED_ORIGIN is the preferred env var; fall back to the production FRONT_ORIGIN
+
     let allowed_origins = env::var("ALLOWED_ORIGIN")
         .or_else(|_| env::var("FRONT_ORIGIN"))
         .unwrap_or_else(|_| "https://securascan-front-dd57.onrender.com".to_string());
 
     info!(%bind, %allowed_origins, "Starting server");
 
-    // readiness flag that can be flipped once startup tasks complete
     let ready_flag = Arc::new(AtomicBool::new(false));
     let ready_flag_data = aw_web::Data::new(Arc::clone(&ready_flag));
 
-    // simulate startup/init steps (DB/queue). Replace with real init in future.
     if let Err(e) = init_startup().await {
         error!(%e, "startup initialization failed");
-        // still continue but not mark ready
     } else {
         ready_flag.store(true, Ordering::SeqCst);
         info!("startup complete, marking ready");
     }
 
-    // Note: build a fresh Cors per-app since Cors does not implement Clone
-    // Parse allowed origins (comma-separated) and register each explicitly.
     let allowed = allowed_origins.clone();
+
     let server = HttpServer::new(move || {
-        // Normalize and split origins; remove empty entries and trim whitespace.
         let origins: Vec<&str> = allowed
             .split(',')
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
             .collect();
 
-        // build cors per-app and register each allowed origin explicitly
         let mut cors = Cors::default()
             .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
             .allowed_headers(vec![header::CONTENT_TYPE, header::AUTHORIZATION])
@@ -153,61 +142,47 @@ async fn main() -> std::io::Result<()> {
 
         App::new()
             .wrap(middleware::Logger::default())
-            // Request timeout middleware: adjust Duration::from_secs(...) to tune request timeout.
-            // For production, consider reading this value from an env var like REQUEST_TIMEOUT_SECS.
             .wrap(TimeoutMiddleware { timeout: Duration::from_secs(10) })
             .wrap(cors)
-            // limit JSON payloads to 5MB (protects against large body DoS)
             .app_data(aw_web::JsonConfig::default().limit(5 * 1024 * 1024))
             .app_data(ready_flag_data.clone())
             .service(health)
             .service(healthz)
             .service(readiness)
-            // Mock scan endpoints for public Beta
+
+            // *** REGISTER ALL SCAN ROUTES ***
             .service(web::handlers::scans::mock_scan)
             .service(web::handlers::scans::start_scan)
+            .service(web::handlers::scans::list_scans)
+            .service(web::handlers::scans::get_scan)
+
+            // GitHub webhook
             .route(
                 "/api/ci/webhook/github",
                 aw_web::post().to(|req: HttpRequest, body: aw_web::Bytes| async move { github_webhook(req, body).await }),
             )
     })
-        .bind(bind.clone())?
-        .keep_alive(Duration::from_secs(75))
-        .shutdown_timeout(5)
-            .run();
+    .bind(bind.clone())?
+    .keep_alive(Duration::from_secs(75))
+    .shutdown_timeout(5)
+    .run();
 
     let srv_handle = server.handle();
     let server_fut = tokio::spawn(server);
 
-    // listen for shutdown signals
     tokio::spawn(async move {
-        // wait for ctrl-c or termination
         let _ = tokio::signal::ctrl_c().await;
         info!("shutdown signal received, stopping server");
-        // `stop` returns a future; await it to ensure the stop request is executed
         let _ = srv_handle.stop(true).await;
     });
 
-    // wait for server to finish
     match server_fut.await {
-        Ok(Ok(())) => {
-            info!("server exited normally");
-            Ok(())
-        }
-        Ok(Err(e)) => {
-            error!(%e, "server error");
-            // use std::io::Error::other as suggested by clippy
-            Err(std::io::Error::other(format!("server error: {}", e)))
-        }
-        Err(e) => {
-            error!(%e, "server task join error");
-            Err(std::io::Error::other(format!("join error: {}", e)))
-        }
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(std::io::Error::other(format!("server error: {}", e))),
+        Err(e) => Err(std::io::Error::other(format!("join error: {}", e))),
     }
 }
 
 async fn init_startup() -> Result<(), String> {
-    // Placeholder: perform DB migrations, queue connections, etc.
-    // Keep fast in real startup or move long-running tasks to background jobs.
     Ok(())
 }
