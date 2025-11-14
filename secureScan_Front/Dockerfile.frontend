@@ -1,48 +1,40 @@
-#### FRONTEND DOCKERFILE (FINAL FIXED VERSION) ####
+####
+# Dockerfile.frontend (final stable version)
+####
 
 FROM node:20-alpine AS build
 WORKDIR /app
 
+# Install dependencies
 COPY package*.json ./
 RUN npm ci --no-audit --no-fund
 
+# Copy full frontend source
 COPY . .
 
-# Allow bypass of localhost check for CI builds
-ARG ALLOW_LOCAL_API=false
-
-# Build-time API base for production
-ARG VITE_API_BASE=""
+# Hardcode API base for Vite
+ARG VITE_API_BASE=https://securascan-back-dd57.onrender.com
 ENV VITE_API_BASE=${VITE_API_BASE}
 
-RUN echo ">>> Building frontend with:" && \
-    echo "ALLOW_LOCAL_API=${ALLOW_LOCAL_API}" && \
-    echo "VITE_API_BASE=${VITE_API_BASE}"
-
-# If not allowed → block localhost/127
-RUN if [ "${ALLOW_LOCAL_API}" != "true" ]; then \
-        case "${VITE_API_BASE}" in \
-            http://localhost*|http://127.*|https://localhost*|https://127.*) \
-                echo "ERROR: local VITE_API_BASE not allowed in production build"; \
-                exit 1 ;; \
-        esac; \
-    fi
-
+RUN echo ">>> Building with API = ${VITE_API_BASE}"
 RUN npm run build
 
-###### RUNTIME ######
+# Production runtime
 FROM nginx:alpine
+
+# Add nginx gzip + templating
 RUN apk add --no-cache gettext
 
+# Copy built site
 COPY --from=build /app/dist /usr/share/nginx/html
+
+# Copy nginx template (CSP fixed)
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 
+# Hardcode backend origin for CSP
 ENV PORT=8080
-ENV BACKEND_ORIGIN=${VITE_API_BASE}
+
+# No runtime env injection needed anymore
+CMD ["nginx", "-g", "daemon off;"]
 
 EXPOSE 8080
-
-CMD ["/bin/sh", "-c", "\
-echo \"window.__CONFIG__ = { API_BASE: '${BACKEND_ORIGIN}' }\" > /usr/share/nginx/html/__env.js && \
-envsubst '${PORT} ${BACKEND_ORIGIN}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && \
-nginx -g 'daemon off;'"]
