@@ -15,6 +15,8 @@ mod web;
 mod domain;
 mod jobs;
 mod scanner;
+mod db;
+
 
 use web::handlers::webhook::github_webhook;
 use tracing::{info, error};
@@ -38,7 +40,6 @@ async fn readiness(ready_flag: aw_web::Data<Arc<AtomicBool>>) -> HttpResponse {
     }
 }
 
-/// Simple timeout middleware
 struct TimeoutMiddleware {
     timeout: Duration,
 }
@@ -88,6 +89,7 @@ where
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let svc = Arc::clone(&self.service);
         let dur = self.timeout;
+
         Box::pin(async move {
             match tokio::time::timeout(dur, svc.call(req)).await {
                 Ok(Ok(res)) => Ok(res),
@@ -119,6 +121,14 @@ async fn main() -> std::io::Result<()> {
         ready_flag.store(true, Ordering::SeqCst);
         info!("startup complete, marking ready");
     }
+    // Initialize database pool and run migrations
+    let pool = match db::init_pool().await {
+        Ok(p) => p,
+        Err(e) => {
+            error!(%e, "database initialization failed");
+            return Err(std::io::Error::other(format!("db init failed: {}", e)));
+        }
+    };
 
     let allowed = allowed_origins.clone();
 
@@ -146,20 +156,22 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .app_data(aw_web::JsonConfig::default().limit(5 * 1024 * 1024))
             .app_data(ready_flag_data.clone())
+            .app_data(aw_web::Data::new(pool.clone()))
             .service(health)
             .service(healthz)
             .service(readiness)
 
-            // *** REGISTER ALL SCAN ROUTES ***
+            // 🔥 FULL SCAN ENDPOINTS
             .service(web::handlers::scans::mock_scan)
             .service(web::handlers::scans::start_scan)
             .service(web::handlers::scans::list_scans)
             .service(web::handlers::scans::get_scan)
 
-            // GitHub webhook
             .route(
                 "/api/ci/webhook/github",
-                aw_web::post().to(|req: HttpRequest, body: aw_web::Bytes| async move { github_webhook(req, body).await }),
+                aw_web::post().to(|req: HttpRequest, body: aw_web::Bytes| async move {
+                    github_webhook(req, body).await
+                }),
             )
     })
     .bind(bind.clone())?
