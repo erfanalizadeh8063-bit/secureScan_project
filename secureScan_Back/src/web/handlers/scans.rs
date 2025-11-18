@@ -16,9 +16,8 @@ pub async fn list_scans(pool: web::Data<DbPool>) -> Result<impl Responder, ApiEr
     Ok(HttpResponse::Ok().json(items))
 }
 
-// New minimal mock endpoints for public Beta
-// Accept flexible payloads and return a fixed JSON mock response.
-
+// Minimal mock endpoint for early public Beta.
+// Accepts flexible JSON payloads and returns a fixed mock response.
 #[allow(dead_code)]
 #[derive(Deserialize)]
 pub struct UrlReq {
@@ -44,13 +43,13 @@ pub async fn start_scan(
     pool: web::Data<DbPool>,
     body: String,
 ) -> Result<impl Responder, ApiError> {
-    // برای دیباگ: بدنهٔ خام درخواست را لاگ کن
+    // Log raw request body for debugging.
     tracing::info!("start_scan raw body: {:?}", body);
 
     let trimmed = body.trim();
     let mut target_opt: Option<String> = None;
 
-    // 1) اگر به‌نظر JSON می‌آید (با { شروع می‌شود)، اول سعی می‌کنیم JSON را parse کنیم.
+    // 1) If body looks like JSON (starts with '{'), try to parse JSON first.
     if trimmed.starts_with('{') {
         match serde_json::from_str::<serde_json::Value>(trimmed) {
             Ok(value) => {
@@ -64,13 +63,13 @@ pub async fn start_scan(
                 }
             }
             Err(e) => {
-                // JSON خراب بود، فقط لاگ می‌کنیم و می‌رویم سراغ fallback
+                // Invalid JSON: log and continue to fallback parsing.
                 tracing::warn!("start_scan json parse error: {}", e);
             }
         }
     }
 
-    // 2) اگر هنوز target نداریم، سعی می‌کنیم هر URL داخل body پیدا کنیم.
+    // 2) If we still do not have a target, try to extract the first URL substring.
     if target_opt.is_none() {
         if let Some(idx) = trimmed.find("http://").or_else(|| trimmed.find("https://")) {
             let rest = &trimmed[idx..];
@@ -82,7 +81,7 @@ pub async fn start_scan(
         }
     }
 
-    // اگر هنوز هم چیزی پیدا نشد، BadRequest برمی‌گردانیم.
+    // If we still cannot find any URL, return BadRequest.
     let target = target_opt.ok_or_else(|| {
         ApiError::BadRequest("could not parse target url from request body".into())
     })?;
@@ -92,11 +91,11 @@ pub async fn start_scan(
         return Err(ApiError::BadRequest("target_url is empty".into()));
     }
 
-    // Validate URL
+    // Validate target URL syntax.
     Url::parse(target_str)
         .map_err(|_| ApiError::BadRequest("invalid target_url".into()))?;
 
-    // Insert into DB
+    // Insert into DB (status starts as 'queued').
     let row = scans_repo::create_scan(pool.get_ref(), target_str)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
@@ -114,12 +113,45 @@ pub async fn get_scan(
     path: web::Path<Uuid>,
 ) -> Result<impl Responder, ApiError> {
     let id = path.into_inner();
-    let rec = scans_repo::get_scan(pool.get_ref(), id)
+
+    // First fetch the scan row from `scans` table.
+    let scan_row = scans_repo::get_scan(pool.get_ref(), id)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    if let Some(r) = rec {
-        Ok(HttpResponse::Ok().json(r))
+    if let Some(scan) = scan_row {
+        // Then fetch the latest scan_result (if any) from `scan_results` table.
+        let latest_result = scans_repo::get_latest_scan_result(pool.get_ref(), scan.id)
+            .await
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+        // If we have a result, include extra fields in the response.
+        let body = if let Some(res) = latest_result {
+            json!({
+                "id": scan.id,
+                "url": scan.url,
+                "status": scan.status,
+                "created_at": scan.created_at,
+                "headers": res.headers,
+                "ssl_grade": res.ssl_grade,
+                "findings": res.issues.unwrap_or_else(|| json!([])),
+                "completed_at": res.completed_at,
+            })
+        } else {
+            // If there is no result yet, return scan with empty findings and null extras.
+            json!({
+                "id": scan.id,
+                "url": scan.url,
+                "status": scan.status,
+                "created_at": scan.created_at,
+                "headers": null,
+                "ssl_grade": null,
+                "findings": [],
+                "completed_at": null,
+            })
+        };
+
+        Ok(HttpResponse::Ok().json(body))
     } else {
         Err(ApiError::NotFound("scan not found".into()))
     }
