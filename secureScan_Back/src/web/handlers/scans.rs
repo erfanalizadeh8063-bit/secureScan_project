@@ -25,12 +25,6 @@ pub struct UrlReq {
     pub url: Option<String>,
 }
 
-#[derive(Deserialize)]
-pub struct StartScanRequest {
-    #[serde(alias = "url", alias = "targetUrl", alias = "target_url")]
-    pub target_url: String,
-}
-
 #[post("/scan")]
 pub async fn mock_scan(payload: web::Json<serde_json::Value>) -> impl Responder {
     let url = payload
@@ -51,21 +45,49 @@ pub async fn start_scan(
     body: String,
 ) -> Result<impl Responder, ApiError> {
     // برای دیباگ: بدنهٔ خام درخواست را لاگ کن
-    tracing::info!("start_scan raw body: {}", body);
+    tracing::info!("start_scan raw body: {:?}", body);
 
-    // JSON را دستی parse می‌کنیم
-    let value: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|e| ApiError::BadRequest(format!("invalid json: {e}")))?;
+    let trimmed = body.trim();
+    let mut target_opt: Option<String> = None;
 
-    // دنبال یکی از کلیدهای target_url / targetUrl / url می‌گردیم
-    let target_str = value
-        .get("target_url")
-        .or_else(|| value.get("targetUrl"))
-        .or_else(|| value.get("url"))
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ApiError::BadRequest("target_url/url is required".into()))?;
+    // 1) اگر به‌نظر JSON می‌آید (با { شروع می‌شود)، اول سعی می‌کنیم JSON را parse کنیم.
+    if trimmed.starts_with('{') {
+        match serde_json::from_str::<serde_json::Value>(trimmed) {
+            Ok(value) => {
+                if let Some(s) = value
+                    .get("target_url")
+                    .or_else(|| value.get("targetUrl"))
+                    .or_else(|| value.get("url"))
+                    .and_then(|v| v.as_str())
+                {
+                    target_opt = Some(s.to_string());
+                }
+            }
+            Err(e) => {
+                // JSON خراب بود، فقط لاگ می‌کنیم و می‌رویم سراغ fallback
+                tracing::warn!("start_scan json parse error: {}", e);
+            }
+        }
+    }
 
-    let target_str = target_str.trim();
+    // 2) اگر هنوز target نداریم، سعی می‌کنیم هر URL داخل body پیدا کنیم.
+    if target_opt.is_none() {
+        if let Some(idx) = trimmed.find("http://").or_else(|| trimmed.find("https://")) {
+            let rest = &trimmed[idx..];
+            let end = rest
+                .find(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == '}' )
+                .unwrap_or(rest.len());
+            let url_candidate = &rest[..end];
+            target_opt = Some(url_candidate.to_string());
+        }
+    }
+
+    // اگر هنوز هم چیزی پیدا نشد، BadRequest برمی‌گردانیم.
+    let target = target_opt.ok_or_else(|| {
+        ApiError::BadRequest("could not parse target url from request body".into())
+    })?;
+
+    let target_str = target.trim();
     if target_str.is_empty() {
         return Err(ApiError::BadRequest("target_url is empty".into()));
     }
