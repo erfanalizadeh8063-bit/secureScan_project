@@ -25,6 +25,12 @@ pub struct UrlReq {
     pub url: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct StartScanRequest {
+    #[serde(alias = "url", alias = "targetUrl", alias = "target_url")]
+    pub target_url: String,
+}
+
 #[post("/scan")]
 pub async fn mock_scan(payload: web::Json<serde_json::Value>) -> impl Responder {
     let url = payload
@@ -42,20 +48,20 @@ pub async fn mock_scan(payload: web::Json<serde_json::Value>) -> impl Responder 
 #[post("/api/scans")]
 pub async fn start_scan(
     pool: web::Data<DbPool>,
-    payload: web::Json<serde_json::Value>,
+    payload: web::Json<StartScanRequest>,
 ) -> Result<impl Responder, ApiError> {
-    // Accept either { "target": "..." } or { "target_url": "..." }
-    let url_str = payload
-        .get("target")
-        .and_then(|v| v.as_str())
-        .or_else(|| payload.get("target_url").and_then(|v| v.as_str()))
-        .unwrap_or("https://example.com");
+    let body = payload.into_inner();
+    let target_str = body.target_url.trim();
 
-    // Try to parse to validate; if invalid, return BadRequest
-    let _ = Url::parse(url_str).map_err(|_| ApiError::BadRequest("invalid url".into()))?;
+    if target_str.is_empty() {
+        return Err(ApiError::BadRequest("target_url is required".into()));
+    }
+
+    // Validate URL
+    let _ = Url::parse(target_str).map_err(|_| ApiError::BadRequest("invalid target_url".into()))?;
 
     // Insert into DB
-    let row = scans_repo::create_scan(pool.get_ref(), url_str)
+    let row = scans_repo::create_scan(pool.get_ref(), target_str)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
