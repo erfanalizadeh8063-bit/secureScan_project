@@ -1,6 +1,7 @@
 use crate::db::DbPool;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use serde_json::Value as JsonValue;
 use sqlx::FromRow;
 use uuid::Uuid;
 
@@ -10,6 +11,16 @@ pub struct ScanRow {
     pub url: String,
     pub status: String,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct ScanResultRow {
+    pub id: Uuid,
+    pub scan_id: Uuid,
+    pub headers: Option<JsonValue>,
+    pub ssl_grade: Option<String>,
+    pub issues: Option<JsonValue>,
+    pub completed_at: Option<DateTime<Utc>>,
 }
 
 pub async fn create_scan(pool: &DbPool, url: &str) -> Result<ScanRow, sqlx::Error> {
@@ -50,6 +61,75 @@ pub async fn get_scan(pool: &DbPool, id: Uuid) -> Result<Option<ScanRow>, sqlx::
         "#,
     )
     .bind(id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row)
+}
+
+/// Update scan status in `scans` table (queued → running → completed/failed)
+pub async fn update_scan_status(
+    pool: &DbPool,
+    id: Uuid,
+    status: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        UPDATE scans
+        SET status = $1
+        WHERE id = $2
+        "#,
+    )
+    .bind(status)
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Insert a row into `scan_results` for a finished scan
+pub async fn insert_scan_result(
+    pool: &DbPool,
+    scan_id: Uuid,
+    headers: Option<JsonValue>,
+    ssl_grade: Option<String>,
+    issues: JsonValue,
+    completed_at: DateTime<Utc>,
+) -> Result<ScanResultRow, sqlx::Error> {
+    let row = sqlx::query_as::<_, ScanResultRow>(
+        r#"
+        INSERT INTO scan_results (scan_id, headers, ssl_grade, issues, completed_at)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, scan_id, headers, ssl_grade, issues, completed_at
+        "#,
+    )
+    .bind(scan_id)
+    .bind(headers)
+    .bind(ssl_grade)
+    .bind(issues)
+    .bind(completed_at)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(row)
+}
+
+/// Get the latest result for a given scan_id (if any)
+pub async fn get_latest_scan_result(
+    pool: &DbPool,
+    scan_id: Uuid,
+) -> Result<Option<ScanResultRow>, sqlx::Error> {
+    let row = sqlx::query_as::<_, ScanResultRow>(
+        r#"
+        SELECT id, scan_id, headers, ssl_grade, issues, completed_at
+        FROM scan_results
+        WHERE scan_id = $1
+        ORDER BY completed_at DESC NULLS LAST
+        LIMIT 1
+        "#,
+    )
+    .bind(scan_id)
     .fetch_optional(pool)
     .await?;
 
