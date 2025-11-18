@@ -2,6 +2,7 @@ FROM rust:1-bookworm AS builder
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
+COPY migrations ./migrations
 # Build release binary
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential pkg-config libssl-dev ca-certificates tzdata curl && rm -rf /var/lib/apt/lists/*
 RUN cargo build --release
