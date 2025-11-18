@@ -48,17 +48,31 @@ pub async fn mock_scan(payload: web::Json<serde_json::Value>) -> impl Responder 
 #[post("/api/scans")]
 pub async fn start_scan(
     pool: web::Data<DbPool>,
-    payload: web::Json<StartScanRequest>,
+    body: String,
 ) -> Result<impl Responder, ApiError> {
-    let body = payload.into_inner();
-    let target_str = body.target_url.trim();
+    // برای دیباگ: بدنهٔ خام درخواست را لاگ کن
+    tracing::info!("start_scan raw body: {}", body);
 
+    // JSON را دستی parse می‌کنیم
+    let value: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| ApiError::BadRequest(format!("invalid json: {e}")))?;
+
+    // دنبال یکی از کلیدهای target_url / targetUrl / url می‌گردیم
+    let target_str = value
+        .get("target_url")
+        .or_else(|| value.get("targetUrl"))
+        .or_else(|| value.get("url"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ApiError::BadRequest("target_url/url is required".into()))?;
+
+    let target_str = target_str.trim();
     if target_str.is_empty() {
-        return Err(ApiError::BadRequest("target_url is required".into()));
+        return Err(ApiError::BadRequest("target_url is empty".into()));
     }
 
     // Validate URL
-    let _ = Url::parse(target_str).map_err(|_| ApiError::BadRequest("invalid target_url".into()))?;
+    Url::parse(target_str)
+        .map_err(|_| ApiError::BadRequest("invalid target_url".into()))?;
 
     // Insert into DB
     let row = scans_repo::create_scan(pool.get_ref(), target_str)
