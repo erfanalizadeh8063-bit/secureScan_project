@@ -20,6 +20,8 @@ mod db;
 
 use web::handlers::webhook::github_webhook;
 use tracing::{info, error};
+use tokio::sync::mpsc;
+use crate::jobs::queue::{ScanQueue, start_workers_db};
 
 #[get("/api/health")]
 async fn health() -> HttpResponse {
@@ -132,6 +134,13 @@ async fn main() -> std::io::Result<()> {
 
     let allowed = allowed_origins.clone();
 
+    // Create job queue and start DB-backed workers
+    let (tx, rx) = mpsc::channel(128);
+    let scan_queue = ScanQueue::new(tx);
+    // Spawn worker dispatcher using the DB pool; concurrency from env or default
+    let concurrency: usize = std::env::var("WORKER_CONCURRENCY").ok().and_then(|s| s.parse().ok()).unwrap_or(4);
+    start_workers_db(pool.clone(), rx, concurrency);
+
     let server = HttpServer::new(move || {
         let origins: Vec<&str> = allowed
             .split(',')
@@ -157,6 +166,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(aw_web::JsonConfig::default().limit(5 * 1024 * 1024))
             .app_data(ready_flag_data.clone())
             .app_data(aw_web::Data::new(pool.clone()))
+            .app_data(aw_web::Data::new(scan_queue.clone()))
             .service(health)
             .service(healthz)
             .service(readiness)

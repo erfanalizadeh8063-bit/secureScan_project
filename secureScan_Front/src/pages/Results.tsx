@@ -36,7 +36,7 @@ function fmtDate(x: string | number | null | undefined) {
 }
 
 const SEVERITIES = ["ALL", "critical", "high", "medium", "low", "info"] as const;
-type SeverityFilter = typeof SEVERITIES[number];
+type SeverityFilter = (typeof SEVERITIES)[number];
 
 export default function Results() {
   const [rows, setRows] = useState<ApiScan[]>([]);
@@ -77,12 +77,14 @@ export default function Results() {
           ? String(r.status).toLowerCase() === "completed"
           : true
       )
-      .filter((r) =>
-        term
-          ? (r.target_url || "").toLowerCase().includes(term) ||
-            String(r.id).toLowerCase().includes(term)
-          : true
-      )
+      .filter((r) => {
+        if (!term) return true;
+        const target = (
+          r.target_url || (r as any).url || ""
+        ).toLowerCase();
+        const id = String(r.id).toLowerCase();
+        return target.includes(term) || id.includes(term);
+      })
       .filter((r) => {
         if (sev === "ALL") return true;
         const s = Array.isArray(r.findings) ? r.findings : [];
@@ -167,13 +169,15 @@ export default function Results() {
           {slice.map((r) => {
             const findings = Array.isArray(r.findings) ? r.findings : [];
             const top = topSeverity(findings);
+            const targetLabel = r.target_url || (r as any).url || r.id;
+
             return (
               <Card
                 key={r.id}
                 className="p-0"
                 title={
                   <div className="flex items-center justify-between gap-3">
-                    <div className="truncate">{r.target_url || r.id}</div>
+                    <div className="truncate">{targetLabel}</div>
                     <StatusBadge status={r.status} />
                   </div>
                 }
@@ -192,7 +196,11 @@ export default function Results() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-neutral-400">Top:</span>
-                    {top ? <SeverityBadge severity={top} /> : <span className="text-neutral-400">-</span>}
+                    {top ? (
+                      <SeverityBadge severity={top} />
+                    ) : (
+                      <span className="text-neutral-400">-</span>
+                    )}
                   </div>
                 </div>
 
@@ -203,7 +211,6 @@ export default function Results() {
                   >
                     View details
                   </Link>
-                  {/* quick copy id */}
                   <button
                     className="text-xs text-neutral-400 hover:text-neutral-200"
                     onClick={() => navigator.clipboard.writeText(r.id)}

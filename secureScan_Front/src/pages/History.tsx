@@ -6,6 +6,7 @@ import Card from "@/components/Card";
 type ScanItem = {
   id: string;
   target_url?: string;
+  url?: string;
   status: "queued" | "running" | "completed" | "failed" | "canceled" | string;
   findings?: Array<any>;
   created_at?: string | number;
@@ -31,10 +32,12 @@ export default function History() {
       try {
         setLoading(true);
         setErr(null);
-  const list = await Api.listScans({ limit: 200 });
-  setRows(normalizeScans(Array.isArray(list) ? list : (list as any)?.items || []));
+        const list = await Api.listScans({ limit: 200 });
+        setRows(
+          normalizeScans(Array.isArray(list) ? list : (list as any)?.items || [])
+        );
       } catch (e: any) {
-        // fallback نمایش برای زمانی که بک‌اند آماده نیست
+        // fallback برای زمانی که بک‌اند بالا نیست
         setRows(
           normalizeScans([
             {
@@ -72,7 +75,10 @@ export default function History() {
   const counts = useMemo(() => {
     const c: Record<string, number> = { ALL: rows.length };
     for (const s of STATUSES) c[s] = 0;
-    for (const r of rows) c[(r.status || "").toLowerCase()] = (c[(r.status || "").toLowerCase()] ?? 0) + 1;
+    for (const r of rows) {
+      const key = String(r.status || "").toLowerCase();
+      c[key] = (c[key] ?? 0) + 1;
+    }
     return c;
   }, [rows]);
 
@@ -80,10 +86,11 @@ export default function History() {
     const ss = status.toLowerCase();
     const txt = q.trim().toLowerCase();
     return rows.filter((r) => {
-      const statusOk = ss === "all" ? true : (r.status || "").toLowerCase() === ss;
+      const statusOk =
+        ss === "all" ? true : String(r.status || "").toLowerCase() === ss;
       if (!statusOk) return false;
       if (!txt) return true;
-      const hay = `${r.id} ${r.target_url ?? ""}`.toLowerCase();
+      const hay = `${r.id} ${r.target_url ?? r.url ?? ""}`.toLowerCase();
       return hay.includes(txt);
     });
   }, [rows, status, q]);
@@ -122,14 +129,18 @@ export default function History() {
       {/* نوار خلاصهٔ وضعیت‌ها */}
       <Card>
         <div className="flex flex-wrap items-center gap-2">
-          {(["ALL", ...STATUSES] as const).map((s) => (
-            <span
-              key={s}
-              className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-2 py-1 text-xs"
-            >
-              {s.toUpperCase()}: <b>{counts[s.toLowerCase?.() ? s.toLowerCase() : s] ?? 0}</b>
-            </span>
-          ))}
+          {(["ALL", ...STATUSES] as const).map((s) => {
+            const key = s === "ALL" ? "ALL" : s;
+            const countKey = s === "ALL" ? "ALL" : s.toLowerCase();
+            return (
+              <span
+                key={key}
+                className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-2 py-1 text-xs"
+              >
+                {s.toUpperCase()}: <b>{counts[countKey] ?? 0}</b>
+              </span>
+            );
+          })}
         </div>
       </Card>
 
@@ -159,10 +170,18 @@ export default function History() {
                       <StatusPill status={r.status} />
                     </td>
                     <td className="py-2 pr-3 font-mono break-all">{r.id}</td>
-                    <td className="py-2 pr-3 break-all">{r.target_url ?? "-"}</td>
-                    <td className="py-2 pr-3">{Array.isArray(r.findings) ? r.findings.length : 0}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtTime(r.created_at)}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtTime(r.finished_at)}</td>
+                    <td className="py-2 pr-3 break-all">
+                      {r.target_url ?? r.url ?? "-"}
+                    </td>
+                    <td className="py-2 pr-3">
+                      {Array.isArray(r.findings) ? r.findings.length : 0}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtTime(r.created_at)}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtTime(r.finished_at)}
+                    </td>
                     <td className="py-2 pr-0 text-right">
                       <div className="flex items-center gap-2 justify-end">
                         <button
@@ -215,7 +234,7 @@ function StatusFilterBar({
     <div className="flex items-center gap-1 rounded-xl border border-neutral-800 bg-neutral-900/50 p-1">
       {items.map((it) => {
         const act = active === it;
-        const key = typeof (counts as any)[it] !== "undefined" ? it : it.toLowerCase();
+        const key = it === "ALL" ? "ALL" : it.toLowerCase();
         return (
           <button
             key={it}
@@ -225,7 +244,8 @@ function StatusFilterBar({
             }`}
             title={`${it} (${counts[key] ?? 0})`}
           >
-            {String(it).toUpperCase()} <span className="opacity-70">({counts[key] ?? 0})</span>
+            {String(it).toUpperCase()}{" "}
+            <span className="opacity-70">({counts[key] ?? 0})</span>
           </button>
         );
       })}
@@ -255,7 +275,9 @@ function StatusPill({ status }: { status: string }) {
 function normalizeScans(list: any[]): ScanItem[] {
   return (list || []).map((x) => ({
     id: String(x.id ?? x.scan_id ?? ""),
-    target_url: x.target_url ?? x.target ?? "",
+    // مهم: url از بک‌اند را هم نگه می‌داریم
+    target_url: x.target_url ?? x.target ?? x.url ?? "",
+    url: x.url,
     status: String(x.status ?? "queued").toLowerCase(),
     findings: Array.isArray(x.findings) ? x.findings : [],
     created_at: x.created_at ?? x.started_at ?? x.createdAt ?? null,
@@ -269,11 +291,10 @@ function fmtTime(v: any) {
   try {
     const d = typeof v === "number" ? new Date(v) : new Date(String(v));
     if (isNaN(d.getTime())) return "—";
-    // yyyy-mm-dd HH:MM
     const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(
-      d.getMinutes()
-    )}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(
+      d.getHours()
+    )}:${pad(d.getMinutes())}`;
   } catch {
     return "—";
   }
@@ -287,7 +308,7 @@ function exportHistoryCSV(rows: ScanItem[]) {
       [
         r.id,
         r.status,
-        r.target_url ?? "",
+        r.target_url ?? r.url ?? "",
         Array.isArray(r.findings) ? r.findings.length : 0,
         String(r.created_at ?? ""),
         String(r.finished_at ?? ""),

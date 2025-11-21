@@ -5,6 +5,7 @@ use uuid::Uuid;
 use url::Url;
 
 use crate::db::DbPool;
+use crate::jobs::queue::{ScanJob, ScanQueue};
 use crate::domain::errors::ApiError;
 use crate::domain::scans_repo;
 
@@ -41,6 +42,7 @@ pub async fn mock_scan(payload: web::Json<serde_json::Value>) -> impl Responder 
 #[post("/api/scans")]
 pub async fn start_scan(
     pool: web::Data<DbPool>,
+    queue: web::Data<ScanQueue>,
     body: String,
 ) -> Result<impl Responder, ApiError> {
     // Log raw request body for debugging.
@@ -99,6 +101,20 @@ pub async fn start_scan(
     let row = scans_repo::create_scan(pool.get_ref(), target_str)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    // Enqueue background worker job (non-blocking). If enqueue fails, log but still return success.
+    match Url::parse(&row.url) {
+        Ok(parsed) => {
+            let job = ScanJob { id: row.id, target: parsed };
+            // Fire-and-forget enqueue; if it errors, convert to ApiError::Internal
+            if let Err(e) = queue.enqueue(job).await {
+                tracing::error!("failed to enqueue scan job {}: {}", row.id, e);
+            }
+        }
+        Err(e) => {
+            tracing::error!("created scan row but url parse failed {}: {}", row.url, e);
+        }
+    }
 
     Ok(HttpResponse::Ok().json(json!({
         "scan_id": row.id,

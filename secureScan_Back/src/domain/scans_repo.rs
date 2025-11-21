@@ -67,7 +67,6 @@ pub async fn get_scan(pool: &DbPool, id: Uuid) -> Result<Option<ScanRow>, sqlx::
     Ok(row)
 }
 
-/// Update scan status in `scans` table (queued → running → completed/failed)
 pub async fn update_scan_status(
     pool: &DbPool,
     id: Uuid,
@@ -88,7 +87,6 @@ pub async fn update_scan_status(
     Ok(())
 }
 
-/// Insert a row into `scan_results` for a finished scan
 pub async fn insert_scan_result(
     pool: &DbPool,
     scan_id: Uuid,
@@ -115,7 +113,6 @@ pub async fn insert_scan_result(
     Ok(row)
 }
 
-/// Get the latest result for a given scan_id (if any)
 pub async fn get_latest_scan_result(
     pool: &DbPool,
     scan_id: Uuid,
@@ -125,7 +122,7 @@ pub async fn get_latest_scan_result(
         SELECT id, scan_id, headers, ssl_grade, issues, completed_at
         FROM scan_results
         WHERE scan_id = $1
-        ORDER BY completed_at DESC NULLS LAST
+        ORDER BY completed_at DESC NULLS LAST, id DESC
         LIMIT 1
         "#,
     )

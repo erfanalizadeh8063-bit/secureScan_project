@@ -17,7 +17,8 @@ export default function LiveScan() {
       const res = await fetch(`${API_BASE}/scan`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target }),
+        // mock endpoint دنبال فیلد url می‌گرده
+        body: JSON.stringify({ url: target }),
       });
 
       if (!res.ok) {
@@ -41,7 +42,8 @@ export default function LiveScan() {
       const res = await fetch(`${API_BASE}/api/scans`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target }),
+        // بک‌اند دنبال target_url / targetUrl / url می‌گرده
+        body: JSON.stringify({ target_url: target }),
       });
 
       if (!res.ok) {
