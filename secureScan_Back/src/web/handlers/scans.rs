@@ -14,7 +14,24 @@ pub async fn list_scans(pool: web::Data<DbPool>) -> Result<impl Responder, ApiEr
     let items = scans_repo::list_scans(pool.get_ref())
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
-    Ok(HttpResponse::Ok().json(items))
+
+    // تبدیل به شکلی که فرانت انتظار دارد: findings + completed_at
+    let response: Vec<_> = items
+        .into_iter()
+        .map(|row| {
+            let findings = row.issues.unwrap_or_else(|| json!([]));
+            json!({
+                "id": row.id,
+                "url": row.url,
+                "status": row.status,
+                "created_at": row.created_at,
+                "completed_at": row.completed_at,
+                "findings": findings
+            })
+        })
+        .collect();
+
+    Ok(HttpResponse::Ok().json(response))
 }
 
 // Minimal mock endpoint for early public Beta.
@@ -106,7 +123,6 @@ pub async fn start_scan(
     match Url::parse(&row.url) {
         Ok(parsed) => {
             let job = ScanJob { id: row.id, target: parsed };
-            // Fire-and-forget enqueue; if it errors, convert to ApiError::Internal
             if let Err(e) = queue.enqueue(job).await {
                 tracing::error!("failed to enqueue scan job {}: {}", row.id, e);
             }

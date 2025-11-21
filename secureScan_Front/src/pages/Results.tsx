@@ -35,6 +35,13 @@ function fmtDate(x: string | number | null | undefined) {
   }).format(d);
 }
 
+// Very simple risk score: 10 points per finding, max 100
+function computeRiskScore(findings: any[] | null | undefined): number {
+  if (!Array.isArray(findings) || findings.length === 0) return 0;
+  const score = findings.length * 10;
+  return score > 100 ? 100 : score;
+}
+
 const SEVERITIES = ["ALL", "critical", "high", "medium", "low", "info"] as const;
 type SeverityFilter = (typeof SEVERITIES)[number];
 
@@ -71,25 +78,48 @@ export default function Results() {
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
+
     return rows
+      .map((r) => {
+        const target_url =
+          (r as any).target_url ?? (r as any).url ?? "";
+        const finished_at =
+          (r as any).finished_at ?? (r as any).completed_at ?? null;
+        const findings = Array.isArray((r as any).findings)
+          ? (r as any).findings
+          : [];
+        const risk_score = computeRiskScore(findings);
+
+        return {
+          ...r,
+          target_url,
+          finished_at,
+          findings,
+          risk_score,
+        } as ApiScan & {
+          target_url: string;
+          finished_at: any;
+          findings: any[];
+          risk_score: number;
+        };
+      })
       .filter((r) =>
         onlyCompleted
           ? String(r.status).toLowerCase() === "completed"
           : true
       )
-      .filter((r) => {
-        if (!term) return true;
-        const target = (
-          r.target_url || (r as any).url || ""
-        ).toLowerCase();
-        const id = String(r.id).toLowerCase();
-        return target.includes(term) || id.includes(term);
-      })
+      .filter((r) =>
+        term
+          ? (r.target_url || "").toLowerCase().includes(term) ||
+            String(r.id).toLowerCase().includes(term)
+          : true
+      )
       .filter((r) => {
         if (sev === "ALL") return true;
         const s = Array.isArray(r.findings) ? r.findings : [];
         return s.some(
-          (f: any) => String(f?.severity || "").toLowerCase() === sev
+          (f: any) =>
+            String(f?.severity || "").toLowerCase() === sev
         );
       })
       .sort(
@@ -101,7 +131,10 @@ export default function Results() {
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const pageSafe = Math.min(page, totalPages);
-  const slice = filtered.slice((pageSafe - 1) * pageSize, pageSafe * pageSize);
+  const slice = filtered.slice(
+    (pageSafe - 1) * pageSize,
+    pageSafe * pageSize
+  );
 
   useEffect(() => {
     // reset to first page when filters change
@@ -111,7 +144,9 @@ export default function Results() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold text-neutral-100">Results</h1>
+        <h1 className="text-2xl font-semibold text-neutral-100">
+          Results
+        </h1>
         <button
           onClick={load}
           className="rounded-xl px-4 py-2 bg-neutral-800 text-neutral-200 hover:bg-neutral-700"
@@ -163,13 +198,18 @@ export default function Results() {
       {loading ? (
         <div className="text-neutral-400">Loading…</div>
       ) : slice.length === 0 ? (
-        <div className="text-neutral-500">No results match your filters.</div>
+        <div className="text-neutral-500">
+          No results match your filters.
+        </div>
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {slice.map((r) => {
-            const findings = Array.isArray(r.findings) ? r.findings : [];
+            const findings = Array.isArray((r as any).findings)
+              ? (r as any).findings
+              : [];
             const top = topSeverity(findings);
-            const targetLabel = r.target_url || (r as any).url || r.id;
+            const risk_score =
+              (r as any).risk_score ?? computeRiskScore(findings);
 
             return (
               <Card
@@ -177,25 +217,46 @@ export default function Results() {
                 className="p-0"
                 title={
                   <div className="flex items-center justify-between gap-3">
-                    <div className="truncate">{targetLabel}</div>
+                    <div className="truncate">
+                      {r.target_url || (r as any).url || r.id}
+                    </div>
                     <StatusBadge status={r.status} />
                   </div>
                 }
                 subtitle={
                   <div className="flex items-center gap-3 text-sm text-neutral-400">
-                    <span>Created: {fmtDate(r.created_at)}</span>
+                    <span>Created: {fmtDate(r.created_at as any)}</span>
                     <span>•</span>
-                    <span>Finished: {fmtDate(r.finished_at)}</span>
+                    <span>Finished: {fmtDate((r as any).finished_at)}</span>
                   </div>
                 }
               >
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-neutral-400">Findings:</span>
-                    <span className="font-mono">{findings.length}</span>
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-neutral-400">
+                        Findings:
+                      </span>
+                      <span className="font-mono">
+                        {findings.length}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-neutral-400">
+                        Risk score:
+                      </span>
+                      <span className="font-mono">
+                        {risk_score}
+                      </span>
+                      <span className="text-xs text-neutral-500">
+                        / 100
+                      </span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-neutral-400">Top:</span>
+                    <span className="text-sm text-neutral-400">
+                      Top:
+                    </span>
                     {top ? (
                       <SeverityBadge severity={top} />
                     ) : (
@@ -211,9 +272,10 @@ export default function Results() {
                   >
                     View details
                   </Link>
+                  {/* quick copy id */}
                   <button
                     className="text-xs text-neutral-400 hover:text-neutral-200"
-                    onClick={() => navigator.clipboard.writeText(r.id)}
+                    onClick={() => navigator.clipboard.writeText(String(r.id))}
                     title="Copy ID"
                   >
                     Copy ID

@@ -23,6 +23,17 @@ pub struct ScanResultRow {
     pub completed_at: Option<DateTime<Utc>>,
 }
 
+/// Row type برای لیست اسکن‌ها + خلاصه‌ی آخرین نتیجه
+#[derive(Debug, Serialize, FromRow)]
+pub struct ScanListRow {
+    pub id: Uuid,
+    pub url: String,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub issues: Option<JsonValue>,
+}
+
 pub async fn create_scan(pool: &DbPool, url: &str) -> Result<ScanRow, sqlx::Error> {
     let rec = sqlx::query_as::<_, ScanRow>(
         r#"
@@ -38,12 +49,32 @@ pub async fn create_scan(pool: &DbPool, url: &str) -> Result<ScanRow, sqlx::Erro
     Ok(rec)
 }
 
-pub async fn list_scans(pool: &DbPool) -> Result<Vec<ScanRow>, sqlx::Error> {
-    let rows = sqlx::query_as::<_, ScanRow>(
+/// لیست اسکن‌ها + آخرین نتیجه‌ی هر اسکن (اگر باشد)
+pub async fn list_scans(pool: &DbPool) -> Result<Vec<ScanListRow>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, ScanListRow>(
         r#"
-        SELECT id, url, status, created_at
-        FROM scans
-        ORDER BY created_at DESC
+        WITH latest AS (
+            SELECT
+                r.scan_id,
+                r.completed_at,
+                r.issues,
+                ROW_NUMBER() OVER (
+                    PARTITION BY r.scan_id
+                    ORDER BY r.completed_at DESC NULLS LAST, r.id DESC
+                ) AS rn
+            FROM scan_results r
+        )
+        SELECT
+            s.id,
+            s.url,
+            s.status,
+            s.created_at,
+            l.completed_at,
+            l.issues
+        FROM scans s
+        LEFT JOIN latest l
+            ON l.scan_id = s.id AND l.rn = 1
+        ORDER BY s.created_at DESC
         "#,
     )
     .fetch_all(pool)
