@@ -16,6 +16,8 @@ mod domain;
 mod jobs;
 mod scanner;
 mod db;
+mod services;
+
 
 
 use web::handlers::webhook::github_webhook;

@@ -1,101 +1,40 @@
-﻿# ====================================
-# 🔹 General temporary & archive files
-# ====================================
-*.log
-*.tmp
-*.bak
-*.zip
-*.tar
-*.gz
-*.7z
-*.rar
-*.swp
-.DS_Store
-Thumbs.db
-
-# ====================================
-# 🔹 Rust (Backend)
-# ====================================
-target/
-**/target/
-*.rlib
-*.rmeta
-*.pdb
-*.dll
-*.exe
-Cargo.lock
-# If you have tests or coverage outputs
-coverage/
-*.profraw
-*.profdata
+﻿# --- Rust / Cargo ---
 secureScan_Back/target/
+**/target/
 
-# ====================================
-# 🔹 Node.js / Frontend
-# ====================================
-node_modules/
+# --- Backend env files ---
+.env
+*.env
+.env.*
+
+# --- Frontend (Vite / React / TypeScript) ---
+secureScan_Front/node_modules/
+secureScan_Front/dist/
+secureScan_Front/tsconfig.tsbuildinfo
+
+# پوشش کلی برای پروژه‌های فرانت
+**/node_modules/
+**/dist/
+**/tsconfig.tsbuildinfo
+
+# --- VSCode ---
+.vscode/
+
+# --- Logs ---
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
-dist/
-build/
-.cache/
-.next/
-out/
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-secureScan_Front/node_modules/
+pnpm-debug.log*
 
-# ====================================
-# 🔹 Python (if any scripts or tools)
-# ====================================
-__pycache__/
-*.py[cod]
-venv/
-.venv/
-env/
-ENV/
-instance/
-*.db
-.mypy_cache/
-.pytest_cache/
-.cache/
+# --- Archives / binaries ---
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
 
-# ====================================
-# 🔹 Docker
-# ====================================
-*.pid
-*.sock
-*.pid.lock
-
-# ====================================
-# 🔹 IDE / Editors
-# ====================================
-.vscode/
-.idea/
-*.sublime-project
-*.sublime-workspace
-*.code-workspace
-
-# ====================================
-# 🔹 OS / Misc
-# ====================================
-Desktop.ini
-*.iml
-*.class
-*.out
-
-# ====================================
-# 🔹 Project-specific
-# ====================================
-secureScan_Back.zip
-secureScan_Front.zip
-secureScan_Back/venv/
-secureScan_Front/.next/
-# TypeScript build info (generated)
-secureScan_Front/tsconfig.tsbuildinfo
-tsconfig.tsbuildinfo
+# --- OS junk files ---
+.DS_Store
+Thumbs.db
