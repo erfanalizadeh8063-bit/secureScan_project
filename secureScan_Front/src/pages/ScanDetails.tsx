@@ -39,7 +39,7 @@ function fmtDate(x: string | number | null | undefined) {
   }).format(d);
 }
 
-// convert mixed findings (string | object) به آرایه‌ی Finding
+// Convert mixed findings (string | object) into a Finding array
 function normalizeFindings(raw: any): Finding[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((f) => {
@@ -50,7 +50,7 @@ function normalizeFindings(raw: any): Finding[] {
         message: f,
       } as Finding;
     }
-    // اگر خودش آبجکت باشه، همونو برگردونیم
+    // If it is already an object, return it as-is
     return f as Finding;
   });
 }
@@ -85,7 +85,7 @@ export default function ScanDetails() {
       }
     }, 2000);
     return () => clearInterval(interval);
-    // فقط به id و status گوش بدیم
+    // Only listen to id and status changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, scan?.status]);
 

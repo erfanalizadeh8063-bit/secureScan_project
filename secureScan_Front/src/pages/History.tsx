@@ -37,7 +37,7 @@ export default function History() {
           normalizeScans(Array.isArray(list) ? list : (list as any)?.items || [])
         );
       } catch (e: any) {
-        // fallback برای زمانی که بک‌اند بالا نیست
+        // Fallback data when the backend is unavailable
         setRows(
           normalizeScans([
             {
@@ -97,7 +97,7 @@ export default function History() {
 
   return (
     <div className="space-y-6">
-      {/* عنوان و کنترل‌ها */}
+      {/* Header and controls */}
       <Card>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
@@ -126,7 +126,7 @@ export default function History() {
         </div>
       </Card>
 
-      {/* نوار خلاصهٔ وضعیت‌ها */}
+      {/* Status summary bar */}
       <Card>
         <div className="flex flex-wrap items-center gap-2">
           {(["ALL", ...STATUSES] as const).map((s) => {
@@ -144,7 +144,7 @@ export default function History() {
         </div>
       </Card>
 
-      {/* جدول تاریخچه */}
+      {/* History table */}
       <Card>
         {loading && <div className="text-sm opacity-80">Loading…</div>}
         {err && <div className="text-sm text-red-300">Error: {err}</div>}
@@ -275,7 +275,7 @@ function StatusPill({ status }: { status: string }) {
 function normalizeScans(list: any[]): ScanItem[] {
   return (list || []).map((x) => ({
     id: String(x.id ?? x.scan_id ?? ""),
-    // مهم: url از بک‌اند را هم نگه می‌داریم
+    // Keep the backend-provided URL reference as well
     target_url: x.target_url ?? x.target ?? x.url ?? "",
     url: x.url,
     status: String(x.status ?? "queued").toLowerCase(),

@@ -35,7 +35,10 @@ export default function Home() {
 
     try {
       const r = await Api.startScan(url); // expect: { scan_id, status }
-      const sid = r.scan_id;
+      const sid = r.scan_id ?? null;
+      if (!sid) {
+        throw new Error("Scan ID missing in response");
+      }
       setScanId(sid);
       setStatus(r.status || "queued");
       setLogs((p) => [...p, `Scan enqueued (${sid})`, "Waiting for worker…"]);
