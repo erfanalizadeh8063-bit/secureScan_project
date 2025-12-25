@@ -8,74 +8,79 @@ use sqlx;
 use thiserror::Error;
 use uuid::Uuid;
 
-/// سرویس ارورهای مربوط به احراز هویت
+/// Errors that can happen during authentication
 #[derive(Debug, Error)]
 pub enum AuthError {
+    /// Email is already registered
     #[error("email already in use")]
     EmailTaken,
 
+    /// Email or password is invalid
     #[error("invalid email or password")]
     InvalidCredentials,
 
+    /// Wrapped database error
     #[error("database error: {0}")]
     Db(#[from] sqlx::Error),
 
-    #[error("password hash error: {0}")]
-    Hash(#[from] password_hash::Error),
+    /// Password hashing/parsing error
+    #[error("password hash error")]
+    Hash,
 }
 
-/// تولید هش امن برای پسورد با Argon2
+/// Hash a plain text password using Argon2
 pub fn hash_password(password: &str) -> Result<String, AuthError> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
 
-    let password_hash = argon2.hash_password(password.as_bytes(), &salt)?;
+    let password_hash = argon2
+        .hash_password(password.as_bytes(), &salt)
+        .map_err(|_| AuthError::Hash)?;
+
     Ok(password_hash.to_string())
 }
 
-/// چک کردن پسورد کاربر با هش ذخیره‌شده
+/// Verify a plain text password against a stored hash
 pub fn verify_password(stored_hash: &str, password: &str) -> Result<(), AuthError> {
-    let parsed_hash = PasswordHash::new(stored_hash)?;
+    let parsed_hash = PasswordHash::new(stored_hash).map_err(|_| AuthError::Hash)?;
     let argon2 = Argon2::default();
 
-    // هر اروری از verify رو به InvalidCredentials مپ می‌کنیم
     argon2
         .verify_password(password.as_bytes(), &parsed_hash)
         .map_err(|_| AuthError::InvalidCredentials)
 }
 
-/// ثبت‌نام کاربر جدید:
-/// - اگر ایمیل وجود داشته باشد => AuthError::EmailTaken
-/// - در غیر این صورت، هش پسورد ساخته و در DB ذخیره می‌شود
+/// Register a new user with email + password
 pub async fn register_user(
     pool: &DbPool,
     email: &str,
     password: &str,
 ) -> Result<Uuid, AuthError> {
-    // آیا ایمیل قبلاً ثبت شده؟
+    // Check if email already exists
     if let Some(_) = users_repo::find_by_email(pool, email).await? {
         return Err(AuthError::EmailTaken);
     }
 
+    // Hash password and insert into DB
     let password_hash = hash_password(password)?;
     let user_id = users_repo::insert_user(pool, email, &password_hash).await?;
     Ok(user_id)
 }
 
-/// لاگین کاربر:
-/// - اگر ایمیل پیدا نشد یا پسورد اشتباه بود => AuthError::InvalidCredentials
-/// - در غیر این صورت، id کاربر برگردانده می‌شود
+/// Login a user and return their id if credentials are valid
 pub async fn login_user(
     pool: &DbPool,
     email: &str,
     password: &str,
 ) -> Result<Uuid, AuthError> {
+    // Find user by email
     let user = users_repo::find_by_email(pool, email).await?;
 
     let Some(user) = user else {
         return Err(AuthError::InvalidCredentials);
     };
 
+    // Verify password against stored hash
     verify_password(&user.password_hash, password)?;
     Ok(user.id)
 }

@@ -1,12 +1,20 @@
 ﻿#![allow(dead_code)]
 
-use actix_web::{get, App, HttpRequest, HttpResponse, HttpServer, middleware, web as aw_web};
+use actix_cors::Cors;
+use actix_web::{
+    get,
+    middleware,
+    web as aw_web,
+    App,
+    HttpRequest,
+    HttpResponse,
+    HttpServer,
+};
 use actix_web::dev::{ServiceRequest, ServiceResponse, Transform};
 use actix_web::http::header;
-use actix_cors::Cors;
 use futures_util::future::LocalBoxFuture;
-use std::future::{ready as std_ready, Ready};
 use std::env;
+use std::future::{ready as std_ready, Ready};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,12 +26,11 @@ mod scanner;
 mod db;
 mod services;
 
-
-
-use web::handlers::webhook::github_webhook;
-use tracing::{info, error};
-use tokio::sync::mpsc;
 use crate::jobs::queue::{ScanQueue, start_workers_db};
+use crate::web::handlers::webhook::github_webhook;
+use crate::web::handlers::auth as auth_handlers;
+use tokio::sync::mpsc;
+use tracing::{info, error};
 
 #[get("/api/health")]
 async fn health() -> HttpResponse {
@@ -125,6 +132,7 @@ async fn main() -> std::io::Result<()> {
         ready_flag.store(true, Ordering::SeqCst);
         info!("startup complete, marking ready");
     }
+
     // Initialize database pool and run migrations
     let pool = match db::init_pool().await {
         Ok(p) => p,
@@ -139,8 +147,10 @@ async fn main() -> std::io::Result<()> {
     // Create job queue and start DB-backed workers
     let (tx, rx) = mpsc::channel(128);
     let scan_queue = ScanQueue::new(tx);
-    // Spawn worker dispatcher using the DB pool; concurrency from env or default
-    let concurrency: usize = std::env::var("WORKER_CONCURRENCY").ok().and_then(|s| s.parse().ok()).unwrap_or(4);
+    let concurrency: usize = std::env::var("WORKER_CONCURRENCY")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(4);
     start_workers_db(pool.clone(), rx, concurrency);
 
     let server = HttpServer::new(move || {
@@ -172,6 +182,10 @@ async fn main() -> std::io::Result<()> {
             .service(health)
             .service(healthz)
             .service(readiness)
+
+            // 🔐 AUTH ENDPOINTS
+            .service(auth_handlers::register)
+            .service(auth_handlers::login)
 
             // 🔥 FULL SCAN ENDPOINTS
             .service(web::handlers::scans::mock_scan)

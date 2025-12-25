@@ -1,110 +1,96 @@
-use actix_web::{post, web, HttpResponse};
+use actix_web::{post, web, HttpResponse, Result};
 use serde::Deserialize;
-use serde_json::json;
 
 use crate::db::DbPool;
-use crate::domain::errors::ApiError;
-use crate::domain::users_repo;
+use crate::services::auth as auth_svc;
+use crate::services::auth::AuthError;
 
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
-use password_hash::SaltString;
-use rand_core::OsRng;
-
-#[derive(Debug, Deserialize)]
-pub struct RegisterBody {
+/// Request body for /api/auth/register
+#[derive(Deserialize)]
+pub struct RegisterPayload {
     pub email: String,
     pub password: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct LoginBody {
+/// Request body for /api/auth/login
+#[derive(Deserialize)]
+pub struct LoginPayload {
     pub email: String,
     pub password: String,
 }
 
 /// POST /api/auth/register
+/// Register a new user with email & password.
 #[post("/api/auth/register")]
 pub async fn register(
     pool: web::Data<DbPool>,
-    payload: web::Json<RegisterBody>,
-) -> Result<HttpResponse, ApiError> {
-    let email = payload.email.trim().to_lowercase();
-    let password = payload.password.trim().to_string();
+    payload: web::Json<RegisterPayload>,
+) -> Result<HttpResponse> {
+    let email = payload.email.trim();
+    let password = payload.password.as_str();
 
-    if email.is_empty() || !email.contains('@') {
-        return Err(ApiError::BadRequest("invalid email".into()));
+    match auth_svc::register_user(&pool, email, password).await {
+        Ok(user_id) => Ok(HttpResponse::Ok().json(serde_json::json!({
+            "id": user_id,
+            "email": email,
+        }))),
+        Err(e) => {
+            let resp = match e {
+                AuthError::EmailTaken => {
+                    HttpResponse::Conflict().json(serde_json::json!({
+                        "error": "email_taken"
+                    }))
+                }
+                AuthError::InvalidCredentials => {
+                    HttpResponse::Unauthorized().json(serde_json::json!({
+                        "error": "invalid_credentials"
+                    }))
+                }
+                AuthError::Db(_) | AuthError::Hash => {
+                    HttpResponse::InternalServerError().json(serde_json::json!({
+                        "error": "internal_error"
+                    }))
+                }
+            };
+            Ok(resp)
+        }
     }
-    if password.len() < 8 {
-        return Err(ApiError::BadRequest(
-            "password must be at least 8 characters".into(),
-        ));
-    }
-
-    // چک کنیم ایمیل قبلاً ثبت نشده باشد
-    if let Some(_) = users_repo::find_user_by_email(pool.get_ref(), &email)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-    {
-        return Err(ApiError::BadRequest("email already registered".into()));
-    }
-
-    // ساخت hash امن با Argon2 (salt تصادفی)
-    let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
-
-    let password_hash = argon2
-        .hash_password(password.as_bytes(), &salt)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-        .to_string();
-
-    // ساخت کاربر در دیتابیس
-    let user = users_repo::create_user(pool.get_ref(), &email, &password_hash)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    Ok(HttpResponse::Created().json(json!({
-        "id": user.id,
-        "email": user.email,
-    })))
 }
 
 /// POST /api/auth/login
+/// Log in a user with email & password.
 #[post("/api/auth/login")]
 pub async fn login(
     pool: web::Data<DbPool>,
-    payload: web::Json<LoginBody>,
-) -> Result<HttpResponse, ApiError> {
-    let email = payload.email.trim().to_lowercase();
-    let password = payload.password.trim().to_string();
+    payload: web::Json<LoginPayload>,
+) -> Result<HttpResponse> {
+    let email = payload.email.trim();
+    let password = payload.password.as_str();
 
-    // کاربر با ایمیل
-    let user_opt = users_repo::find_user_by_email(pool.get_ref(), &email)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    let user = match user_opt {
-        Some(u) => u,
-        None => {
-            return Err(ApiError::BadRequest("invalid credentials".into()));
+    match auth_svc::login_user(&pool, email, password).await {
+        Ok(user_id) => Ok(HttpResponse::Ok().json(serde_json::json!({
+            "id": user_id,
+            "email": email,
+        }))),
+        Err(e) => {
+            let resp = match e {
+                AuthError::InvalidCredentials => {
+                    HttpResponse::Unauthorized().json(serde_json::json!({
+                        "error": "invalid_credentials"
+                    }))
+                }
+                AuthError::EmailTaken => {
+                    HttpResponse::BadRequest().json(serde_json::json!({
+                        "error": "unexpected_email_taken"
+                    }))
+                }
+                AuthError::Db(_) | AuthError::Hash => {
+                    HttpResponse::InternalServerError().json(serde_json::json!({
+                        "error": "internal_error"
+                    }))
+                }
+            };
+            Ok(resp)
         }
-    };
-
-    // verify password
-    let parsed_hash = PasswordHash::new(&user.password_hash)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    let argon2 = Argon2::default();
-    if argon2
-        .verify_password(password.as_bytes(), &parsed_hash)
-        .is_err()
-    {
-        return Err(ApiError::BadRequest("invalid credentials".into()));
     }
-
-    // فعلاً یک "توکن" ساده (در فاز بعد JWT یا مشابه می‌سازیم)
-    Ok(HttpResponse::Ok().json(json!({
-        "id": user.id,
-        "email": user.email,
-        "token": user.id, // فقط placeholder
-    })))
 }
