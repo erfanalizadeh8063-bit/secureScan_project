@@ -1,5 +1,5 @@
-version: "3.9"
 services:
+  # ---------- PROD (no profile so `docker compose up` works) ----------
   backend:
     image: securescan-backend:glibc
     build:
@@ -7,55 +7,114 @@ services:
       dockerfile: Dockerfile.backend
     container_name: securescan-back
     ports:
-      - "8080:8080"
+      - "7000:8080"
     environment:
       - RUST_LOG=info
       - FRONT_ORIGIN=http://localhost:3000
+      - BIND_ADDR=0.0.0.0:8080
+      - PORT=8080
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
       interval: 30s
       timeout: 3s
       retries: 5
-    profiles: ["prod"]
-    depends_on:
-      frontend:
-        condition: service_started
 
   frontend:
     build:
       context: ./secureScan_Front
       dockerfile: Dockerfile.frontend
+      args:
+        # Local API base for the frontend build
+        - VITE_API_BASE=http://localhost:7000
     container_name: securescan-front
     ports:
-      - "3000:10000"
-    profiles: ["prod"]
+      - "3000:80"
+
+  # ---------- DEV (enabled with `--profile dev`) ----------
+  postgres-dev:
+    image: postgres:16-alpine
+    profiles: ["dev"]
+    environment:
+      - POSTGRES_USER=securascan
+      - POSTGRES_PASSWORD=securascan
+      - POSTGRES_DB=securascan
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "securascan"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   backend-dev:
-    image: rust:1-alpine
+    image: rust:1-bookworm
     working_dir: /app
+    profiles: ["dev"]
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+    restart: unless-stopped
     volumes:
       - ./secureScan_Back:/app
       - cargo_target:/app/target
-    command: sh -lc "apk add --no-cache musl-dev pkgconfig openssl-dev build-base cargo-watch && cargo install cargo-watch || true && cargo watch -x 'run'"
-    ports:
-      - "8080:8080"
+      - cargo_registry:/usr/local/cargo/registry
+      - cargo_git:/usr/local/cargo/git
     environment:
       - RUST_LOG=debug
-    profiles: ["dev"]
+      - RUST_BACKTRACE=1
+      - BIND_ADDR=0.0.0.0:8080
+      - PORT=8080
+      - FRONT_ORIGIN=http://localhost:5173
+      - DATABASE_URL=postgres://securascan:securascan@postgres-dev:5432/securascan
+    ports:
+      - "7001:8080"
+    command:
+      - /bin/sh
+      - -lc
+      - |
+          set -eu
+          # Force a Linux PATH no matter what the host injects
+          export PATH="/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+          echo "=== backend-dev boot ==="
+          echo "PATH=$PATH"
+
+          # Call cargo via absolute path (extra safety)
+          /usr/local/cargo/bin/cargo --version
+          /usr/local/cargo/bin/rustc --version
+
+          if ! command -v cargo-watch >/dev/null 2>&1; then
+            /usr/local/cargo/bin/cargo install cargo-watch --locked
+          fi
+
+          exec /usr/local/cargo/bin/cargo watch -x "run"
 
   frontend-dev:
-    image: node:20-alpine
+    image: node:20-bookworm-slim
     working_dir: /app
+    profiles: ["dev"]
+    restart: unless-stopped
     volumes:
       - ./secureScan_Front:/app
+      # Keep node_modules inside Docker volume (do NOT mount Windows node_modules)
+      - node_modules:/app/node_modules
       - node_cache:/root/.npm
-    command: sh -lc "npm ci && npm run dev -- --host"
-    ports:
-      - "3000:5173"
     environment:
       - CHOKIDAR_USEPOLLING=true
-    profiles: ["dev"]
+      - VITE_API_BASE=http://localhost:7001
+    ports:
+      - "5173:5173"
+    command:
+      - /bin/sh
+      - -lc
+      - |
+          set -eu
+          (npm ci --no-audit --no-fund || npm install --no-audit --no-fund)
+          exec npm run dev -- --host 0.0.0.0 --port 5173 --strictPort
 
 volumes:
   cargo_target:
+  cargo_registry:
+  cargo_git:
+  node_modules:
   node_cache:
+  postgres_data:
